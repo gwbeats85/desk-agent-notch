@@ -1,0 +1,60 @@
+.DS_Store
+*.swp
+*.swo
+
+# Swift / Xcode build output
+.build/
+DerivedData/
+.swiftpm/
+*.xcuserstate
+*.xcuserdata/
+
+# Packaged app output and generated artifacts
+dist/
+build/
+*.app
+*.dSYM
+*.xcarchive
+
+# Local agent/runtime state
+.codex/
+.claude/
+.gemini/
+sessions/
+transcripts/
+logs/
+*.log
+HANDOFF.local.md
+SPARK_HANDOFF.local.md
+TASKS.local.md
+PRIVATE_*.md
+
+# Secrets and machine-local config
+.env
+.env.*
+*.pem
+*.p12
+*.mobileprovision
+*.cer
+id_rsa
+id_ed25519
+secrets/
+tokens/
+credentials/
+*.secret
+*.secrets
+*.token
+*.credentials
+*_secret.*
+*_token.*
+*_credential.*
+
+# Screenshots, renders, and temporary media
+*.mov
+*.mp4
+*.m4v
+*.webm
+*.heic
+*.tmp
+tmp/
+coverage/
