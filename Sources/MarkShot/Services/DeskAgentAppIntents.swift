@@ -145,9 +145,9 @@ struct CheckDeskAgentStatusIntent: AppIntent {
         }
 
         if status.pairedDevices > 0 {
-            parts.append("\(status.pairedDevices) phone\(status.pairedDevices == 1 ? "" : "s") paired")
+            parts.append("\(status.pairedDevices) phone\(status.pairedDevices == 1 ? "" : "s") remembered")
         } else {
-            parts.append("no phone paired")
+            parts.append("no phone remembered")
         }
 
         if !status.airSends.isEmpty {
