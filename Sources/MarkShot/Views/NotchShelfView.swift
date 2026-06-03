@@ -9224,6 +9224,15 @@ private struct HermesSidecarView: View {
             HermesSidecarActionRow(title: "Apple Shortcuts", subtitle: "Native automations and Desk Agent App Intents", symbol: "square.stack.3d.up.fill", accent: Color(red: 0.34, green: 0.68, blue: 1.0)) {
                 openPath("/System/Applications/Shortcuts.app")
             },
+            HermesSidecarActionRow(title: "Apple Calendar", subtitle: "Native schedule and upcoming events", symbol: "calendar", accent: Color(red: 0.74, green: 0.56, blue: 1.0)) {
+                openPath("/System/Applications/Calendar.app")
+            },
+            HermesSidecarActionRow(title: "Apple Reminders", subtitle: "Native tasks synced across Mac, iPhone, and Watch", symbol: "checklist", accent: Color(red: 0.32, green: 0.9, blue: 0.62)) {
+                openPath("/System/Applications/Reminders.app")
+            },
+            HermesSidecarActionRow(title: "Apple Contacts", subtitle: "Native people context; no custom contacts database", symbol: "person.crop.circle", accent: Color(red: 1.0, green: 0.72, blue: 0.28)) {
+                openPath("/System/Applications/Contacts.app")
+            },
             HermesSidecarActionRow(title: "n8n Automations", subtitle: "Workflow automations", symbol: "point.3.connected.trianglepath.dotted", accent: Color(red: 1.0, green: 0.5, blue: 0.36)) {
                 openURLString(DeskAgentLocalPaths.n8nURL)
             },
@@ -9251,6 +9260,15 @@ private struct HermesSidecarView: View {
         [
             HermesSidecarActionRow(title: "System Settings", subtitle: "Main Mac settings app", symbol: "gearshape.fill", accent: Color(red: 0.9, green: 0.9, blue: 0.92)) {
                 openPath("/System/Applications/System Settings.app")
+            },
+            HermesSidecarActionRow(title: "Calendar", subtitle: "Open Apple Calendar", symbol: "calendar", accent: Color(red: 0.74, green: 0.56, blue: 1.0)) {
+                openPath("/System/Applications/Calendar.app")
+            },
+            HermesSidecarActionRow(title: "Reminders", subtitle: "Open Apple Reminders", symbol: "checklist", accent: Color(red: 0.32, green: 0.9, blue: 0.62)) {
+                openPath("/System/Applications/Reminders.app")
+            },
+            HermesSidecarActionRow(title: "Contacts", subtitle: "Open Apple Contacts", symbol: "person.crop.circle", accent: Color(red: 1.0, green: 0.72, blue: 0.28)) {
+                openPath("/System/Applications/Contacts.app")
             },
             HermesSidecarActionRow(
                 title: sidecarRoomRestore == nil ? "Make Room" : "Restore Room",

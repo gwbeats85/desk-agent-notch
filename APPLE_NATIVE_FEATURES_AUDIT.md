@@ -29,7 +29,7 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 | Browse/manage Mac files | Finder, Quick Look, Trash, pasteboard, native file dialogs | agent context attach/approved automation | Sidecar Mac tab is a guarded Finder-style layer; permanent delete/overwrite stay out until explicit confirmation model exists |
 | System settings and permissions | System Settings deep links | none | Sidecar System launches core settings panes for Privacy, Accessibility, Screen Recording, Sound, Displays, and Network |
 | Calendar/date commitments | Apple Calendar/EventKit | Hermes planning/routing | First read-only Home agenda wired on Mac; create/edit should wait for explicit confirmations |
-| Contacts/people context | Contacts framework / native Contacts app | Hermes relationship memory only when needed | Candidate; not wired yet |
+| Contacts/people context | Contacts framework / native Contacts app | Hermes relationship memory only when needed | Native Contacts launcher wired in Actions/System; read access should wait for a clear use-case |
 | Apple Watch access | App Intents, Shortcuts, widgets/complications | bridge only for agent conversation/action routing | Future target; do not start a separate watch product |
 | Health / activity / sleep | HealthKit on iPhone/watchOS | iPhone companion summary into Hermes/Notch | Future iPhone app target; do not chase direct Mac HealthKit access |
 
@@ -72,9 +72,10 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 
 6. **Apple Calendar and Contacts**
    - Done on Mac: Home can request Calendar access and show upcoming Apple Calendar events for the next 7 days.
+   - Done on Mac: Actions/System can launch Calendar, Reminders, and Contacts as native Apple apps.
    - Calendar should remain EventKit first for date/time commitments, reminders, and schedule checks.
    - Contacts should be native Contacts first for people lookup, not a custom people database.
-   - Next: add read-only status/actions before allowing Hermes to create or edit events/contacts.
+   - Next: add Contacts read-only lookup only if Hermes needs people context; create/edit must wait for explicit confirmations.
 
 7. **Apple Watch**
    - Use App Intents/Shortcuts as the first path so Watch, Action Button, Siri, and widgets can trigger the same Desk Agent actions.
