@@ -8,10 +8,11 @@ struct CaptureShelfBatch: Identifiable {
     let id = UUID()
     var images: [NSImage] = []
     var clips: [URL] = []
+    var texts: [String] = []
     let createdAt: Date
 
     var itemCount: Int {
-        images.count + clips.count
+        images.count + clips.count + texts.count
     }
 
     var hasClips: Bool {
@@ -76,9 +77,15 @@ final class AppState: ObservableObject {
     private var captureThumbnailControllers: [CaptureThumbnailWindowController] = []
     private var shelfWindowController: NotchShelfWindowController?
     private var quickLookPreviewController: ShelfQuickLookPreviewController?
+    private var clipboardTimer: Timer?
+    private var lastPasteboardChangeCount = NSPasteboard.general.changeCount
+    private var ignoredPasteboardChangeCount: Int?
+    private var lastShelfText: String?
     private let mainWindowIdentifier = NSUserInterfaceItemIdentifier("MarkShotMainWindow")
 
     init() {
+        startClipboardShelfMonitor()
+
         NotificationCenter.default.addObserver(
             forName: .markShotCaptureRegion,
             object: nil,
@@ -261,9 +268,9 @@ final class AppState: ObservableObject {
                     case .success(let image):
                         MarkShotLog.write("capture success: \(image.size.width)x\(image.size.height)")
                         NSApp.unhide(nil)
-                        self.addCaptureThumbnail(image)
+                        self.addImageToShelf(image, source: "capture")
                         self.hideToolbar()
-                        self.statusMessage = "Captured. Click the thumbnail to edit, or copy it from the hover controls."
+                        self.statusMessage = "Captured to the Notch shelf."
                     case .failure(let error):
                         MarkShotLog.write("capture failed: \(error.localizedDescription)")
                         self.statusMessage = error.localizedDescription
@@ -520,6 +527,11 @@ final class AppState: ObservableObject {
         copyImageToClipboard(image)
     }
 
+    func copyShelfTextToClipboard(_ text: String) {
+        copyTextToClipboard(text)
+        statusMessage = "Copied shelf text."
+    }
+
     func copyLatestShelfBatchToClipboard() {
         guard let batch = shelfBatches.first else {
             statusMessage = "Shelf is empty."
@@ -531,7 +543,9 @@ final class AppState: ObservableObject {
         pasteboard.clearContents()
         var objects: [NSPasteboardWriting] = batch.images
         objects.append(contentsOf: batch.clips.map { $0 as NSURL })
+        objects.append(contentsOf: batch.texts.map { $0 as NSString })
         pasteboard.writeObjects(objects)
+        ignoreCurrentPasteboardChange()
         statusMessage = "Copied \(batch.itemCount) shelf item\(batch.itemCount == 1 ? "" : "s") to clipboard."
     }
 
@@ -579,6 +593,17 @@ final class AppState: ObservableObject {
                 savedCount += 1
             } catch {
                 statusMessage = "Shelf clip save failed: \(error.localizedDescription)"
+                return
+            }
+        }
+        for (index, text) in batch.texts.enumerated() {
+            let filename = "markshot-text-\(timestamp)-\(String(format: "%02d", index + 1)).txt"
+            let destination = folder.appendingPathComponent(filename)
+            do {
+                try Data(text.utf8).write(to: destination, options: .atomic)
+                savedCount += 1
+            } catch {
+                statusMessage = "Shelf text save failed: \(error.localizedDescription)"
                 return
             }
         }
@@ -682,12 +707,45 @@ final class AppState: ObservableObject {
             return url
         }
         urls.append(contentsOf: batch.clips)
+        for (index, text) in batch.texts.enumerated() {
+            let filename = "desk-agent-shelf-text-\(timestamp)-\(String(format: "%02d", index + 1)).txt"
+            let url = folder.appendingPathComponent(filename)
+            try Data(text.utf8).write(to: url, options: .atomic)
+            urls.append(url)
+        }
         return urls
     }
 
     func prependShelfBatch(_ batch: CaptureShelfBatch) {
+        guard batch.itemCount > 0 else { return }
         shelfBatches.insert(batch, at: 0)
         trimShelfBatchesIfNeeded()
+    }
+
+    func addImageToShelf(_ image: NSImage, source: String = "capture") {
+        prependShelfBatch(CaptureShelfBatch(images: [image], createdAt: Date()))
+        statusMessage = source == "clipboard" ? "Clipboard image added to the Notch shelf." : "Captured to the Notch shelf."
+        requestNotchModule("shelf")
+        ensureShelfWindow().showExpanded()
+    }
+
+    func addTextToShelf(_ text: String, source: String = "clipboard") {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != lastShelfText else { return }
+        lastShelfText = trimmed
+        prependShelfBatch(CaptureShelfBatch(texts: [trimmed], createdAt: Date()))
+        statusMessage = source == "clipboard" ? "Clipboard text added to the Notch shelf." : "Text added to the Notch shelf."
+        requestNotchModule("shelf")
+        ensureShelfWindow().showExpanded()
+    }
+
+    func addFilesToShelf(_ urls: [URL], source: String = "clipboard") {
+        let fileURLs = urls.filter { $0.isFileURL }
+        guard !fileURLs.isEmpty else { return }
+        prependShelfBatch(CaptureShelfBatch(clips: fileURLs, createdAt: Date()))
+        statusMessage = "\(fileURLs.count) file\(fileURLs.count == 1 ? "" : "s") added to the Notch shelf."
+        requestNotchModule("shelf")
+        ensureShelfWindow().showExpanded()
     }
 
     func requestNotchModule(_ rawValue: String) {
@@ -904,6 +962,7 @@ final class AppState: ObservableObject {
         if let image = renderedImage() {
             pasteboard.writeObjects([image])
         }
+        ignoreCurrentPasteboardChange()
         statusMessage = "Copied annotated PNG to clipboard."
         hideAfterExport()
     }
@@ -918,6 +977,7 @@ final class AppState: ObservableObject {
         pasteboard.clearContents()
         pasteboard.setData(pngData, forType: .png)
         pasteboard.writeObjects([image])
+        ignoreCurrentPasteboardChange()
         statusMessage = "Copied screenshot to clipboard."
     }
 
@@ -925,6 +985,56 @@ final class AppState: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        ignoreCurrentPasteboardChange()
+    }
+
+    private func startClipboardShelfMonitor() {
+        clipboardTimer?.invalidate()
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.9, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.ingestClipboardIfNeeded()
+            }
+        }
+        clipboardTimer?.tolerance = 0.25
+    }
+
+    private func ignoreCurrentPasteboardChange() {
+        let changeCount = NSPasteboard.general.changeCount
+        ignoredPasteboardChangeCount = changeCount
+        lastPasteboardChangeCount = changeCount
+    }
+
+    private func ingestClipboardIfNeeded() {
+        let pasteboard = NSPasteboard.general
+        let changeCount = pasteboard.changeCount
+        guard changeCount != lastPasteboardChangeCount else { return }
+        lastPasteboardChangeCount = changeCount
+        if ignoredPasteboardChangeCount == changeCount {
+            ignoredPasteboardChangeCount = nil
+            return
+        }
+
+        if let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) {
+            let urls = objects.compactMap { object -> URL? in
+                if let url = object as? URL { return url }
+                return (object as? NSURL)?.absoluteURL
+            }
+            if !urls.isEmpty {
+                addFilesToShelf(urls, source: "clipboard")
+                return
+            }
+        }
+
+        if let imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff),
+           let image = NSImage(data: imageData) {
+            addImageToShelf(image, source: "clipboard")
+            return
+        }
+
+        if let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !text.isEmpty {
+            addTextToShelf(text, source: "clipboard")
+        }
     }
 
     func saveRenderedImage() {

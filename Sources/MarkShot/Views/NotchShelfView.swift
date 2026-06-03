@@ -3521,7 +3521,7 @@ struct NotchShelfView: View {
                 Text("Screenshot shelf is empty.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.76))
-                Text("Use hotkeys or floating thumbnails, then AirDrop or copy from here.")
+                Text("Screenshots, clips, files, and copied text collect here.")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.42))
             }
@@ -9607,7 +9607,9 @@ private struct ShelfBatchTile: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             ZStack {
-                if batch.images.isEmpty, let clip = batch.clips.first {
+                if batch.images.isEmpty, batch.clips.isEmpty, let text = batch.texts.first {
+                    textTile(text)
+                } else if batch.images.isEmpty, let clip = batch.clips.first {
                     clipTile(clip)
                 } else {
                     ForEach(Array(batch.images.prefix(3).enumerated()).reversed(), id: \.offset) { index, image in
@@ -9709,6 +9711,47 @@ private struct ShelfBatchTile: View {
             NSItemProvider(object: url as NSURL)
         }
         .help("Preview clip")
+    }
+
+    private func textTile(_ text: String) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.black.opacity(0.58))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(accent.opacity(0.95))
+
+                Text(textPreview(text))
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .lineLimit(3)
+                    .foregroundStyle(.white.opacity(0.74))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(7)
+        }
+        .frame(width: 74, height: 48)
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(accent.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: accent.opacity(isHovering ? 0.28 : 0.12), radius: isHovering ? 10 : 4, x: 0, y: 4)
+        .onTapGesture {
+            state.copyShelfTextToClipboard(text)
+        }
+        .onDrag {
+            NSItemProvider(object: text as NSString)
+        }
+        .help("Drag text out, or click to copy")
+    }
+
+    private func textPreview(_ text: String) -> String {
+        let collapsed = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard collapsed.count > 70 else { return collapsed }
+        return String(collapsed.prefix(70)) + "..."
     }
 
 
