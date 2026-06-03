@@ -601,14 +601,16 @@ struct NotchShelfView: View {
 
             Spacer(minLength: 0)
             
-            MiniMusicVisualizer(
-                state: state,
-                activePulse: activePulse,
-                mediaSource: mediaSource,
-                visualizerHeights: visualizerHeights
+            NotchControlButtonView(
+                title: "Open Hermes Sidecar",
+                symbol: "sidebar.right",
+                isActive: false,
+                activeColor: Color(red: 0.74, green: 0.56, blue: 1.0),
+                activePulse: activePulse
             ) {
-                toggleMusicPlayback()
+                openHermesSidecar()
             }
+            .frame(width: 28, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .padding(.top, 5)
@@ -808,16 +810,14 @@ struct NotchShelfView: View {
 
             Spacer(minLength: 0)
 
-            if activeModule != .music {
-                NotchControlButtonView(
-                    title: state.notchPlaybackActive ? "Pause" : "Play",
-                    symbol: state.notchPlaybackActive ? "pause.fill" : "play.fill",
-                    isActive: state.notchPlaybackActive,
-                    activeColor: Color(red: 0.34, green: 0.68, blue: 1.0),
-                    activePulse: activePulse
-                ) {
-                    toggleMusicPlayback()
-                }
+            NotchControlButtonView(
+                title: "Open Hermes Sidecar",
+                symbol: "sidebar.right",
+                isActive: false,
+                activeColor: Color(red: 0.74, green: 0.56, blue: 1.0),
+                activePulse: activePulse
+            ) {
+                openHermesSidecar()
             }
 
             ModuleIconButtonView(title: "Quit Desk Agent", symbol: "power", isActive: false) {
