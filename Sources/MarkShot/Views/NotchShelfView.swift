@@ -116,12 +116,13 @@ private struct CollapsedNotchStatus {
     let isActive: Bool
 }
 
-private struct NotchInlineAlert {
+private struct NotchInlineAlert: Identifiable {
     let id = UUID()
     let symbol: String
     let title: String
     let detail: String
     let tint: Color
+    let createdAt: Date
     let expiresAt: Date
 }
 
@@ -283,6 +284,7 @@ struct NotchShelfView: View {
     @State private var isCheckingSwitchboard = false
     @State private var switchboardLastChecked: Date?
     @State private var inlineAlert: NotchInlineAlert?
+    @State private var inlineAlertHistory: [NotchInlineAlert] = []
     @StateObject private var camera = NotchCameraController()
     @StateObject private var liveVoice = NotchLiveVoiceController()
     @StateObject private var wakePhrase = NotchWakePhraseController()
@@ -834,13 +836,19 @@ struct NotchShelfView: View {
             duration = 4
         }
 
-        inlineAlert = NotchInlineAlert(
+        let alert = NotchInlineAlert(
             symbol: symbol,
             title: title,
             detail: Self.compactAlertDetail(trimmed),
             tint: tint,
+            createdAt: Date(),
             expiresAt: Date().addingTimeInterval(duration)
         )
+        inlineAlert = alert
+        inlineAlertHistory.insert(alert, at: 0)
+        if inlineAlertHistory.count > 8 {
+            inlineAlertHistory = Array(inlineAlertHistory.prefix(8))
+        }
     }
 
     private func expireInlineAlertIfNeeded(_ now: Date) {
@@ -854,6 +862,12 @@ struct NotchShelfView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard collapsed.count > 34 else { return collapsed }
         return String(collapsed.prefix(31)) + "..."
+    }
+
+    private static func relativeAlertTime(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func expandedShelf(stretch: CGFloat) -> some View {
@@ -1176,6 +1190,8 @@ struct NotchShelfView: View {
 
                 quickTogglesRow
 
+                recentAlertsPanel(stretch: stretch)
+
                 Spacer(minLength: 0)
             }
             .frame(width: 245, alignment: .topLeading)
@@ -1346,6 +1362,76 @@ struct NotchShelfView: View {
         }
         .padding(.horizontal, 4)
         .frame(height: 246 + stretch, alignment: .center)
+    }
+
+    private func recentAlertsPanel(stretch: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "bell.badge")
+                    .font(.system(size: 8.5, weight: .black))
+                    .foregroundStyle(.white.opacity(0.56))
+                Text("Alerts")
+                    .font(.system(size: 9.5, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.66))
+                Spacer(minLength: 0)
+                if !inlineAlertHistory.isEmpty {
+                    Button {
+                        inlineAlertHistory.removeAll()
+                        inlineAlert = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                    .buttonStyle(NotchPressButtonStyle())
+                    .help("Clear alert history")
+                }
+            }
+
+            if inlineAlertHistory.isEmpty {
+                Text("No recent app alerts.")
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.34))
+                    .frame(maxWidth: .infinity, minHeight: 48 + stretch * 0.35, alignment: .center)
+                    .background(Color.white.opacity(0.018), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.white.opacity(0.035), lineWidth: 1))
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(inlineAlertHistory) { alert in
+                            recentAlertRow(alert)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .frame(maxWidth: .infinity, minHeight: 58 + stretch * 0.42, maxHeight: 58 + stretch * 0.42, alignment: .topLeading)
+            }
+        }
+    }
+
+    private func recentAlertRow(_ alert: NotchInlineAlert) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: alert.symbol)
+                .font(.system(size: 8.5, weight: .black))
+                .foregroundStyle(alert.tint.opacity(0.92))
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(alert.detail)
+                    .font(.system(size: 9.2, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                Text("\(alert.title) - \(Self.relativeAlertTime(alert.createdAt))")
+                    .font(.system(size: 7.8, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.32))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 24)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.03), in: Capsule())
+        .overlay(Capsule().strokeBorder(alert.tint.opacity(0.12), lineWidth: 1))
+        .help(alert.detail)
     }
 
     private var remindersSummaryPill: some View {
