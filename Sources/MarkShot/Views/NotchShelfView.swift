@@ -7376,6 +7376,13 @@ private struct HermesSidecarView: View {
                 action: copySelectedMacPaths
             )
             PopoutCircleButton(
+                symbol: "doc.on.clipboard",
+                helpText: "Paste files here",
+                isPrimary: false,
+                isDisabled: false,
+                action: pasteMacFilesHere
+            )
+            PopoutCircleButton(
                 symbol: "paperclip",
                 helpText: "Attach selected to Hermes",
                 isPrimary: false,
@@ -7390,11 +7397,32 @@ private struct HermesSidecarView: View {
                 action: zipSelectedMacItems
             )
             PopoutCircleButton(
+                symbol: "square.on.square",
+                helpText: "Duplicate selected here",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: duplicateSelectedMacItems
+            )
+            PopoutCircleButton(
+                symbol: "folder.badge.plus",
+                helpText: "Move selected to folder",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: moveSelectedMacItems
+            )
+            PopoutCircleButton(
                 symbol: "pencil",
                 helpText: "Rename selected item",
                 isPrimary: false,
                 isDisabled: selectedMacURLs.count != 1,
                 action: renameSelectedMacItem
+            )
+            PopoutCircleButton(
+                symbol: "trash",
+                helpText: "Move selected to Trash",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: trashSelectedMacItems
             )
             PopoutCircleButton(
                 symbol: "arrow.up.forward",
@@ -7501,11 +7529,24 @@ private struct HermesSidecarView: View {
             Button("Copy Path") {
                 copyMacPaths([entry.url])
             }
+            Button("Copy File") {
+                copyMacFilesToPasteboard([entry.url])
+            }
+            Button("Duplicate Here") {
+                duplicateMacItems([entry.url])
+            }
+            Button("Move to Folder...") {
+                moveMacItems([entry.url])
+            }
             Button("Attach to Hermes") {
                 attachMacItems([entry.url])
             }
             Button("Zip") {
                 zipMacItems([entry.url])
+            }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                trashMacItems([entry.url])
             }
         }
     }
@@ -8230,6 +8271,112 @@ private struct HermesSidecarView: View {
         state.statusMessage = paths.count == 1 ? "Copied path." : "Copied \(paths.count) paths."
     }
 
+    private func copyMacFilesToPasteboard(_ urls: [URL]) {
+        let fileURLs = urls.filter(\.isFileURL)
+        guard !fileURLs.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(fileURLs.map { $0 as NSURL })
+        state.statusMessage = "Copied \(fileURLs.count) file\(fileURLs.count == 1 ? "" : "s") to clipboard."
+    }
+
+    private func pasteMacFilesHere() {
+        let urls = NSPasteboard.general.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        guard !urls.isEmpty else {
+            state.statusMessage = "No copied files found on the clipboard."
+            return
+        }
+        copyMacItems(urls, to: macCurrentURL, actionName: "Paste")
+    }
+
+    private func duplicateSelectedMacItems() {
+        duplicateMacItems(selectedMacItems)
+    }
+
+    private func duplicateMacItems(_ urls: [URL]) {
+        copyMacItems(urls, to: macCurrentURL, actionName: "Duplicate")
+    }
+
+    private func copyMacItems(_ urls: [URL], to destinationFolder: URL, actionName: String) {
+        guard !urls.isEmpty else { return }
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try MacFileOperationService.copyItems(urls, to: destinationFolder) }
+            await MainActor.run {
+                switch result {
+                case .success(let copied):
+                    selectedMacURLs = Set(copied)
+                    selectedMacURL = copied.first
+                    reloadMacEntries()
+                    state.statusMessage = "\(actionName)d \(copied.count) item\(copied.count == 1 ? "" : "s")."
+                case .failure(let error):
+                    state.statusMessage = "\(actionName) failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func moveSelectedMacItems() {
+        moveMacItems(selectedMacItems)
+    }
+
+    private func moveMacItems(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        guard let destinationFolder = chooseMacDestinationFolder() else { return }
+        let itemLabel = "\(urls.count) item\(urls.count == 1 ? "" : "s")"
+        guard confirmMacFileAction(
+            title: "Move \(itemLabel)?",
+            message: "Move selected item\(urls.count == 1 ? "" : "s") to \(destinationFolder.lastPathComponent.isEmpty ? destinationFolder.path : destinationFolder.lastPathComponent). Existing files will not be overwritten.",
+            confirmTitle: "Move"
+        ) else { return }
+
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try MacFileOperationService.moveItems(urls, to: destinationFolder) }
+            await MainActor.run {
+                switch result {
+                case .success(let moved):
+                    selectedMacURLs = Set(moved)
+                    selectedMacURL = moved.first
+                    reloadMacEntries()
+                    state.statusMessage = "Moved \(moved.count) item\(moved.count == 1 ? "" : "s")."
+                case .failure(let error):
+                    state.statusMessage = "Move failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func trashSelectedMacItems() {
+        trashMacItems(selectedMacItems)
+    }
+
+    private func trashMacItems(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let itemLabel = "\(urls.count) item\(urls.count == 1 ? "" : "s")"
+        guard confirmMacFileAction(
+            title: "Move \(itemLabel) to Trash?",
+            message: "This uses macOS Trash, so it is recoverable from Finder. It is not a permanent delete.",
+            confirmTitle: "Move to Trash",
+            isDestructive: true
+        ) else { return }
+
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try MacFileOperationService.trashItems(urls) }
+            await MainActor.run {
+                switch result {
+                case .success:
+                    selectedMacURLs.removeAll()
+                    selectedMacURL = nil
+                    reloadMacEntries()
+                    state.statusMessage = "Moved \(itemLabel) to Trash."
+                case .failure(let error):
+                    state.statusMessage = "Trash failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func attachSelectedMacItems() {
         attachMacItems(selectedMacItems)
     }
@@ -8384,6 +8531,32 @@ private struct HermesSidecarView: View {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         return field.stringValue
+    }
+
+    private func chooseMacDestinationFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Destination Folder"
+        panel.message = "Move selected Sidecar Mac items to this folder."
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = macCurrentURL
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+
+    private func confirmMacFileAction(title: String, message: String, confirmTitle: String, isDestructive: Bool = false) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = isDestructive ? .warning : .informational
+        alert.addButton(withTitle: confirmTitle)
+        alert.addButton(withTitle: "Cancel")
+
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func loadVaultNote(_ url: URL) {

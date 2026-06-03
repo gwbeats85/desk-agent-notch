@@ -53,4 +53,30 @@ final class MacFileOperationServiceTests: XCTestCase {
         let size = try FileManager.default.attributesOfItem(atPath: archive.path)[.size] as? NSNumber
         XCTAssertGreaterThan(size?.intValue ?? 0, 0)
     }
+
+    func testCopyItemsCreatesUniqueCopiesInDestinationFolder() throws {
+        let source = tempRoot.appendingPathComponent("clip.txt")
+        let destination = tempRoot.appendingPathComponent("destination", isDirectory: true)
+        try Data("clip".utf8).write(to: source)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data("existing".utf8).write(to: destination.appendingPathComponent("clip.txt"))
+
+        let copied = try MacFileOperationService.copyItems([source], to: destination)
+
+        XCTAssertEqual(copied.count, 1)
+        XCTAssertEqual(copied[0].lastPathComponent, "clip 2.txt")
+        XCTAssertEqual(try String(contentsOf: copied[0]), "clip")
+    }
+
+    func testMoveItemsMovesIntoDestinationWithoutOverwrite() throws {
+        let source = tempRoot.appendingPathComponent("move-me.txt")
+        let destination = tempRoot.appendingPathComponent("destination", isDirectory: true)
+        try Data("move".utf8).write(to: source)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+
+        let moved = try MacFileOperationService.moveItems([source], to: destination)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: moved[0]), "move")
+    }
 }
