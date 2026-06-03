@@ -772,7 +772,7 @@ struct NotchShelfView: View {
             return CollapsedNotchStatus(
                 symbol: "iphone.gen3",
                 title: "Phone",
-                detail: "paired",
+                detail: "remembered",
                 tint: Color(red: 0.32, green: 0.9, blue: 0.62),
                 isActive: false
             )
