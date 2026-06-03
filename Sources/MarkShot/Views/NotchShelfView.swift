@@ -138,11 +138,24 @@ private enum DeskAgentLocalPaths {
     }
 
     static var notesPath: String {
-        env("DESK_AGENT_NOTES_PATH", fallback: "\(homePath)/Documents/DeskAgentNotes")
+        env("DESK_AGENT_NOTES_PATH", fallback: obsidianVaultURL.path)
     }
 
     static var obsidianVaultURL: URL {
-        URL(fileURLWithPath: env("DESK_AGENT_OBSIDIAN_VAULT", fallback: "\(homePath)/Documents/DeskAgentVault"), isDirectory: true)
+        let configured = env("DESK_AGENT_OBSIDIAN_VAULT", fallback: "")
+        if !configured.isEmpty {
+            return URL(fileURLWithPath: configured, isDirectory: true)
+        }
+
+        let candidates = [
+            "\(homePath)/Library/Mobile Documents/iCloud~md~obsidian/Documents/1note",
+            "\(homePath)/Documents/1note",
+            "\(homePath)/Documents/DeskAgentVault"
+        ]
+        if let existing = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+            return URL(fileURLWithPath: existing, isDirectory: true)
+        }
+        return URL(fileURLWithPath: candidates[0], isDirectory: true)
     }
 
     static var servicesRegistryPath: String {

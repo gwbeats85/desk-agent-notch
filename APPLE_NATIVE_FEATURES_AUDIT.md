@@ -1,6 +1,6 @@
 # Apple-Native Feature Audit
 
-Last updated: 2026-05-31
+Last updated: 2026-06-03
 
 ## Product Rule
 
@@ -23,9 +23,14 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 | Nearby local discovery | Bonjour / Network framework | helper HTTP contract | Done for local helper discovery |
 | Nearby peer presence or small payloads | Multipeer Connectivity | helper fallback | Keep as secondary, not main transport |
 | Cross-device clipboard | Universal Clipboard / pasteboard | explicit bridge only for agent routing | Use native clipboard where possible |
-| iCloud note/file persistence | iCloud Drive / CloudKit / document picker | local app storage only for runtime state | Configurable notes/vault path in use; CloudKit later only if needed |
+| iCloud note/file persistence | iCloud Drive / CloudKit / document picker | local app storage only for runtime state | Sidecar Vault and quick notes now default to the iCloud Obsidian `1note` vault; CloudKit later only if needed |
 | Search local captured notes/items | Spotlight/Core Spotlight | helper search later | Candidate after note/media model stabilizes |
-| Preview/open attachments | Quick Look / native document preview | custom preview only for agent-specific cards | Done for shelf batches and embedded chat local image attachments; candidate for popout/note attachments |
+| Preview/open attachments | Quick Look / native document preview | custom preview only for agent-specific cards | Done for shelf batches, Sidecar Mac files, and embedded chat local image attachments; candidate for popout/note attachments |
+| Browse/manage Mac files | Finder, Quick Look, Trash, pasteboard, native file dialogs | agent context attach/approved automation | Sidecar Mac tab is a guarded Finder-style layer; permanent delete/overwrite stay out until explicit confirmation model exists |
+| System settings and permissions | System Settings deep links | none | Sidecar System launches core settings panes for Privacy, Accessibility, Screen Recording, Sound, Displays, and Network |
+| Calendar/date commitments | Apple Calendar/EventKit | Hermes planning/routing | Candidate; not wired yet |
+| Contacts/people context | Contacts framework / native Contacts app | Hermes relationship memory only when needed | Candidate; not wired yet |
+| Apple Watch access | App Intents, Shortcuts, widgets/complications | bridge only for agent conversation/action routing | Future target; do not start a separate watch product |
 
 ## What Not To Duplicate
 
@@ -61,7 +66,18 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 
 5. **Quick Look for media attachments**
    - Done: shelf batches and embedded chat local image attachments can preview through native Quick Look.
+   - Done: Sidecar Mac tab can Quick Look selected files.
    - Next: extend native previews to popout/note attachments when those attachment models stabilize.
+
+6. **Apple Calendar and Contacts**
+   - Calendar should be Apple EventKit first for date/time commitments, reminders, and schedule checks.
+   - Contacts should be native Contacts first for people lookup, not a custom people database.
+   - Next: add read-only status/actions before allowing Hermes to create or edit events/contacts.
+
+7. **Apple Watch**
+   - Use App Intents/Shortcuts as the first path so Watch, Action Button, Siri, and widgets can trigger the same Desk Agent actions.
+   - Keep Hermes/bridge routing behind those intents.
+   - Next: define the smallest Watch surface: Talk to Hermes, Check Status, Save Note, maybe Capture/Share proof.
 
 ## Source Pointers
 

@@ -1135,8 +1135,13 @@ final class AppState: ObservableObject {
            !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return URL(fileURLWithPath: configured, isDirectory: true)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/DeskAgent/inbox", isDirectory: true)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent("Library/Mobile Documents/iCloud~md~obsidian/Documents/1note/inbox", isDirectory: true),
+            home.appendingPathComponent("Documents/1note/inbox", isDirectory: true),
+            home.appendingPathComponent("Documents/DeskAgent/inbox", isDirectory: true)
+        ]
+        return candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) ?? candidates[0]
     }
 
     private static func obsidianQuickNoteEntry(_ note: String) -> String {
