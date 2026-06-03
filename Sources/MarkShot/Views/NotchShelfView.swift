@@ -5876,6 +5876,8 @@ private struct HermesSidecarView: View {
     @State private var sidecarHaptic2 = false
     @State private var sidecarHaptic3 = false
     @State private var macCurrentURL = DeskAgentLocalPaths.homeURL
+    @State private var macBackStack: [URL] = []
+    @State private var macForwardStack: [URL] = []
     @State private var macEntries: [HermesSidecarFileEntry] = []
     @State private var selectedMacURL: URL?
     @State private var selectedMacURLs: Set<URL> = []
@@ -7212,7 +7214,21 @@ private struct HermesSidecarView: View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 PopoutCircleButton(
-                    symbol: "chevron.left",
+                    symbol: "chevron.backward",
+                    helpText: "Back",
+                    isPrimary: false,
+                    isDisabled: macBackStack.isEmpty,
+                    action: goBackMacFolder
+                )
+                PopoutCircleButton(
+                    symbol: "chevron.forward",
+                    helpText: "Forward",
+                    isPrimary: false,
+                    isDisabled: macForwardStack.isEmpty,
+                    action: goForwardMacFolder
+                )
+                PopoutCircleButton(
+                    symbol: "arrow.up",
                     helpText: "Up one folder",
                     isPrimary: false,
                     isDisabled: macCurrentURL.path == "/",
@@ -7236,15 +7252,20 @@ private struct HermesSidecarView: View {
                     isDisabled: false,
                     action: reloadMacEntries
                 )
+                PopoutCircleButton(
+                    symbol: "arrow.up.forward.square",
+                    helpText: "Reveal current folder",
+                    isPrimary: false,
+                    isDisabled: false,
+                    action: revealCurrentMacFolder
+                )
             }
+            macBreadcrumbBar
             HStack(spacing: 6) {
                 ForEach(macRootButtons) { root in
                     Button {
                         guard !macIsLoading else { return }
-                        macCurrentURL = root.url
-                        selectedMacURL = nil
-                        macSearch = ""
-                        macVisibleLimit = 80
+                        navigateMacFolder(to: root.url)
                     } label: {
                         Image(systemName: root.symbol)
                             .font(.system(size: 10, weight: .black))
@@ -7283,6 +7304,39 @@ private struct HermesSidecarView: View {
         }
         .padding(16)
         .background(Color.black.opacity(0.72))
+    }
+
+    private var macBreadcrumbBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(macBreadcrumbItems) { item in
+                    Button {
+                        navigateMacFolder(to: item.url)
+                    } label: {
+                        HStack(spacing: 4) {
+                            if item.isRoot {
+                                Image(systemName: "internaldrive.fill")
+                                    .font(.system(size: 8, weight: .black))
+                            }
+                            Text(item.title)
+                                .font(.system(size: 9, weight: .black, design: .rounded))
+                                .lineLimit(1)
+                            if !item.isLast {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 7, weight: .black))
+                                    .foregroundStyle(.white.opacity(0.26))
+                            }
+                        }
+                        .foregroundStyle(item.isLast ? Color.black.opacity(0.82) : .white.opacity(0.52))
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(item.isLast ? Color.white.opacity(0.86) : Color.white.opacity(0.052), in: Capsule())
+                    }
+                    .buttonStyle(NotchPressButtonStyle())
+                    .help(item.url.path)
+                }
+            }
+        }
     }
 
     private var macEntryList: some View {
@@ -8048,13 +8102,36 @@ private struct HermesSidecarView: View {
         return "Select a file, then Space for Quick Look"
     }
 
+    private var macBreadcrumbItems: [HermesSidecarBreadcrumbItem] {
+        let standardized = macCurrentURL.standardizedFileURL
+        let components = standardized.pathComponents.filter { $0 != "/" }
+        var items: [HermesSidecarBreadcrumbItem] = [
+            HermesSidecarBreadcrumbItem(title: "Mac", url: URL(fileURLWithPath: "/", isDirectory: true), isRoot: true, isLast: components.isEmpty)
+        ]
+
+        var path = ""
+        for (index, component) in components.enumerated() {
+            path += "/\(component)"
+            items.append(
+                HermesSidecarBreadcrumbItem(
+                    title: component,
+                    url: URL(fileURLWithPath: path, isDirectory: true),
+                    isRoot: false,
+                    isLast: index == components.count - 1
+                )
+            )
+        }
+        return items
+    }
+
     private var macRootButtons: [HermesSidecarRootButton] {
         [
             HermesSidecarRootButton(title: "Home", symbol: "house.fill", url: DeskAgentLocalPaths.homeURL),
             HermesSidecarRootButton(title: "Projects", symbol: "folder.fill", url: DeskAgentLocalPaths.homeURL.appendingPathComponent("Projects", isDirectory: true)),
             HermesSidecarRootButton(title: "Apps", symbol: "square.grid.2x2.fill", url: URL(fileURLWithPath: DeskAgentLocalPaths.appsWorkspacePath, isDirectory: true)),
             HermesSidecarRootButton(title: "Notes", symbol: "doc.text.fill", url: URL(fileURLWithPath: DeskAgentLocalPaths.notesPath, isDirectory: true)),
-            HermesSidecarRootButton(title: "Downloads", symbol: "arrow.down.circle.fill", url: DeskAgentLocalPaths.homeURL.appendingPathComponent("Downloads", isDirectory: true))
+            HermesSidecarRootButton(title: "Downloads", symbol: "arrow.down.circle.fill", url: DeskAgentLocalPaths.homeURL.appendingPathComponent("Downloads", isDirectory: true)),
+            HermesSidecarRootButton(title: "Volumes", symbol: "internaldrive.fill", url: URL(fileURLWithPath: "/Volumes", isDirectory: true))
         ]
     }
 
@@ -8204,17 +8281,41 @@ private struct HermesSidecarView: View {
     private func openParentMacFolder() {
         let parent = macCurrentURL.deletingLastPathComponent()
         guard parent.path != macCurrentURL.path else { return }
-        macCurrentURL = parent
-        selectedMacURL = nil
-        selectedMacURLs.removeAll()
-        macSearch = ""
+        navigateMacFolder(to: parent)
     }
 
     private func openMacFolder(_ url: URL) {
-        macCurrentURL = url
+        navigateMacFolder(to: url)
+    }
+
+    private func navigateMacFolder(to url: URL, rememberHistory: Bool = true) {
+        let standardized = url.standardizedFileURL
+        guard standardized.path != macCurrentURL.standardizedFileURL.path else { return }
+        if rememberHistory {
+            macBackStack.append(macCurrentURL)
+            macForwardStack.removeAll()
+        }
+        macCurrentURL = standardized
         selectedMacURL = nil
         selectedMacURLs.removeAll()
         macSearch = ""
+        macVisibleLimit = 80
+    }
+
+    private func goBackMacFolder() {
+        guard let previous = macBackStack.popLast() else { return }
+        macForwardStack.append(macCurrentURL)
+        navigateMacFolder(to: previous, rememberHistory: false)
+    }
+
+    private func goForwardMacFolder() {
+        guard let next = macForwardStack.popLast() else { return }
+        macBackStack.append(macCurrentURL)
+        navigateMacFolder(to: next, rememberHistory: false)
+    }
+
+    private func revealCurrentMacFolder() {
+        NSWorkspace.shared.activateFileViewerSelecting([macCurrentURL])
     }
 
     private func toggleMacSelection(_ url: URL) {
@@ -9067,6 +9168,14 @@ private struct HermesSidecarRootButton: Identifiable {
     let title: String
     let symbol: String
     let url: URL
+}
+
+private struct HermesSidecarBreadcrumbItem: Identifiable {
+    var id: String { url.path }
+    let title: String
+    let url: URL
+    let isRoot: Bool
+    let isLast: Bool
 }
 
 private struct HermesSidecarFileEntry: Identifiable {
