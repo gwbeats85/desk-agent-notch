@@ -7437,6 +7437,13 @@ private struct HermesSidecarView: View {
             )
             .keyboardShortcut(.space, modifiers: [])
             PopoutCircleButton(
+                symbol: "info.circle",
+                helpText: "Get info",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.count != 1,
+                action: showSelectedMacItemInfo
+            )
+            PopoutCircleButton(
                 symbol: "doc.on.doc",
                 helpText: "Copy selected paths",
                 isPrimary: false,
@@ -7593,6 +7600,9 @@ private struct HermesSidecarView: View {
                 Button("Quick Look") {
                     previewMacFile(entry.url)
                 }
+            }
+            Button("Get Info") {
+                showMacItemInfo(entry.url)
             }
             Button("Copy Path") {
                 copyMacPaths([entry.url])
@@ -8374,6 +8384,44 @@ private struct HermesSidecarView: View {
         let controller = SidecarQuickLookPreviewController(urls: [url])
         quickLookController = controller
         controller.show()
+    }
+
+    private func showSelectedMacItemInfo() {
+        guard selectedMacURLs.count == 1, let url = selectedMacURLs.first else { return }
+        showMacItemInfo(url)
+    }
+
+    private func showMacItemInfo(_ url: URL) {
+        let values = try? url.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .fileSizeKey,
+            .totalFileSizeKey,
+            .contentModificationDateKey,
+            .creationDateKey,
+            .localizedTypeDescriptionKey
+        ])
+        let isDirectory = values?.isDirectory == true
+        let type = values?.localizedTypeDescription ?? (isDirectory ? "Folder" : "File")
+        let size = isDirectory ? "Folder" : Self.formatMacByteCount(values?.totalFileSize ?? values?.fileSize)
+        let modified = Self.formatMacInfoDate(values?.contentModificationDate)
+        let created = Self.formatMacInfoDate(values?.creationDate)
+
+        let alert = NSAlert()
+        alert.messageText = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+        alert.informativeText = """
+        Kind: \(type)
+        Size: \(size)
+        Modified: \(modified)
+        Created: \(created)
+        Path: \(url.path)
+        """
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Copy Path")
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertSecondButtonReturn {
+            copyMacPaths([url])
+        }
     }
 
     private func openSelectedMacItem() {
@@ -9187,6 +9235,19 @@ private struct HermesSidecarView: View {
         } catch {
             return "Storage unavailable"
         }
+    }
+
+    private static func formatMacByteCount(_ bytes: Int?) -> String {
+        guard let bytes else { return "Unknown" }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    private static func formatMacInfoDate(_ date: Date?) -> String {
+        guard let date else { return "Unknown" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     private static let obsidianVaultURL = DeskAgentLocalPaths.obsidianVaultURL
