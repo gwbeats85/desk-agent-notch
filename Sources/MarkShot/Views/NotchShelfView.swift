@@ -7259,6 +7259,13 @@ private struct HermesSidecarView: View {
                     isDisabled: false,
                     action: revealCurrentMacFolder
                 )
+                PopoutCircleButton(
+                    symbol: "terminal",
+                    helpText: "Terminal here",
+                    isPrimary: false,
+                    isDisabled: false,
+                    action: openTerminalAtCurrentMacFolder
+                )
             }
             macBreadcrumbBar
             HStack(spacing: 6) {
@@ -7413,6 +7420,13 @@ private struct HermesSidecarView: View {
                 isPrimary: false,
                 isDisabled: false,
                 action: createMacFolder
+            )
+            PopoutCircleButton(
+                symbol: "doc.badge.plus",
+                helpText: "New file",
+                isPrimary: false,
+                isDisabled: false,
+                action: createMacFile
             )
             PopoutCircleButton(
                 symbol: "eye",
@@ -8318,6 +8332,19 @@ private struct HermesSidecarView: View {
         NSWorkspace.shared.activateFileViewerSelecting([macCurrentURL])
     }
 
+    private func openTerminalAtCurrentMacFolder() {
+        let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", terminalURL.path, macCurrentURL.path]
+        do {
+            try process.run()
+            state.statusMessage = "Opening Terminal in \(macCurrentURL.lastPathComponent.isEmpty ? macCurrentURL.path : macCurrentURL.lastPathComponent)."
+        } catch {
+            state.statusMessage = "Terminal failed: \(error.localizedDescription)"
+        }
+    }
+
     private func toggleMacSelection(_ url: URL) {
         if selectedMacURLs.contains(url) {
             selectedMacURLs.remove(url)
@@ -8549,6 +8576,19 @@ private struct HermesSidecarView: View {
             state.statusMessage = "Created \(url.lastPathComponent)."
         } catch {
             state.statusMessage = "New folder failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func createMacFile() {
+        guard let name = promptForMacItemName(title: "New File", message: "Create a file in \(macCurrentURL.lastPathComponent.isEmpty ? macCurrentURL.path : macCurrentURL.lastPathComponent).", defaultValue: "Untitled.md") else { return }
+        do {
+            let url = try MacFileOperationService.createEmptyFile(in: macCurrentURL, named: name)
+            selectedMacURLs = [url]
+            selectedMacURL = url
+            reloadMacEntries()
+            state.statusMessage = "Created \(url.lastPathComponent)."
+        } catch {
+            state.statusMessage = "New file failed: \(error.localizedDescription)"
         }
     }
 

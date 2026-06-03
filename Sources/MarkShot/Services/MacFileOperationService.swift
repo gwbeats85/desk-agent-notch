@@ -36,6 +36,14 @@ enum MacFileOperationService {
         return target
     }
 
+    static func createEmptyFile(in parent: URL, named name: String) throws -> URL {
+        let target = try targetURL(in: parent, named: name)
+        guard FileManager.default.createFile(atPath: target.path, contents: Data()) else {
+            throw MacFileOperationError.processFailed("Could not create file.")
+        }
+        return target
+    }
+
     static func rename(_ url: URL, to newName: String) throws -> URL {
         guard let parent = url.parentDirectory else { throw MacFileOperationError.missingParent }
         let target = try targetURL(in: parent, named: newName)

@@ -24,6 +24,15 @@ final class MacFileOperationServiceTests: XCTestCase {
         XCTAssertTrue(isDirectory.boolValue)
     }
 
+    func testCreateEmptyFileCreatesNamedFileWithoutOverwrite() throws {
+        let created = try MacFileOperationService.createEmptyFile(in: tempRoot, named: "note.md")
+
+        var isDirectory: ObjCBool = true
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.path, isDirectory: &isDirectory))
+        XCTAssertFalse(isDirectory.boolValue)
+        XCTAssertThrowsError(try MacFileOperationService.createEmptyFile(in: tempRoot, named: "note.md"))
+    }
+
     func testRenameMovesItemToNewNameInSameFolder() throws {
         let original = tempRoot.appendingPathComponent("old.txt")
         try Data("hello".utf8).write(to: original)
