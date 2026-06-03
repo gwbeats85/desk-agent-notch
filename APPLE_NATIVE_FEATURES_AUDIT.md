@@ -27,7 +27,7 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 | Search local captured notes/items | Spotlight/Core Spotlight | helper search later | Candidate after note/media model stabilizes |
 | Preview/open attachments | Quick Look / native document preview | custom preview only for agent-specific cards | Done for shelf batches, Sidecar Mac files, and embedded chat local image attachments; candidate for popout/note attachments |
 | Browse/manage Mac files | Finder, Quick Look, Trash, pasteboard, native file dialogs | agent context attach/approved automation | Sidecar Mac tab is a guarded Finder-style layer; permanent delete/overwrite stay out until explicit confirmation model exists |
-| System settings and permissions | System Settings deep links | none | Sidecar System launches core settings panes for Privacy, Accessibility, Screen Recording, Sound, Displays, and Network |
+| System settings and permissions | System Settings deep links | none | Sidecar System launches core settings panes for Privacy, Accessibility, Screen Recording, Sound, Displays, and Network; native launches now surface in Notch alerts |
 | Calendar/date commitments | Apple Calendar/EventKit | Hermes planning/routing | First read-only Home agenda wired on Mac; create/edit should wait for explicit confirmations |
 | Contacts/people context | Contacts framework / native Contacts app | Hermes relationship memory only when needed | Native Contacts launcher wired in Actions/System; read access should wait for a clear use-case |
 | Apple Watch access | App Intents, Shortcuts, widgets/complications | bridge only for agent conversation/action routing | Future target; do not start a separate watch product |

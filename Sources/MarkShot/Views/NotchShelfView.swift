@@ -9480,8 +9480,10 @@ private struct HermesSidecarView: View {
         }
     }
 
-    private func openPath(_ path: String) {
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    private func openPath(_ path: String, label: String? = nil) {
+        let url = URL(fileURLWithPath: path)
+        NSWorkspace.shared.open(url)
+        state.statusMessage = "Opening \(label ?? Self.displayName(for: url))."
     }
 
     private func openFirstExistingPath(_ paths: [String]) {
@@ -9489,17 +9491,29 @@ private struct HermesSidecarView: View {
         openPath(path)
     }
 
-    private func openURLString(_ string: String) {
+    private func openURLString(_ string: String, label: String? = nil) {
         guard let url = URL(string: string) else { return }
         NSWorkspace.shared.open(url)
+        state.statusMessage = "Opening \(label ?? Self.displayName(for: url))."
     }
 
     private func openSystemSettingsPane(_ string: String) {
         guard let url = URL(string: string) else {
-            openPath("/System/Applications/System Settings.app")
+            openPath("/System/Applications/System Settings.app", label: "System Settings")
             return
         }
         NSWorkspace.shared.open(url)
+        state.statusMessage = "Opening System Settings."
+    }
+
+    private static func displayName(for url: URL) -> String {
+        if url.isFileURL {
+            return url.deletingPathExtension().lastPathComponent
+        }
+        if let host = url.host, !host.isEmpty {
+            return host
+        }
+        return url.absoluteString
     }
 
     private static func diskSummary(for url: URL) -> String {
