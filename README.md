@@ -28,6 +28,7 @@ Start new agent work here:
 - Compact top Notch status display, live voice button, chat, shelf count/status, and music transport.
 - Expanded top Notch for daily modules.
 - Right-edge Hermes Sidecar for larger OS-layer workflows.
+- Hermes Sidecar Mac tab for guarded Finder-style work: browse files, multi-select, Quick Look, drag out, drop files into the current folder, copy paths, attach files/folders to Hermes, create folders, rename one item, and zip selections.
 - Movable Hermes pop-out for a draggable/compact chat workbench.
 - MarkShot capture hotkeys, floating thumbnails, screenshot shelf, clips, Quick Look, AirDrop, and note attachment workflows.
 

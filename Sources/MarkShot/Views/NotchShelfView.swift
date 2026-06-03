@@ -5878,6 +5878,7 @@ private struct HermesSidecarView: View {
     @State private var macCurrentURL = DeskAgentLocalPaths.homeURL
     @State private var macEntries: [HermesSidecarFileEntry] = []
     @State private var selectedMacURL: URL?
+    @State private var selectedMacURLs: Set<URL> = []
     @State private var macSearch = ""
     @State private var macError: String?
     @State private var macIsLoading = false
@@ -7334,41 +7335,79 @@ private struct HermesSidecarView: View {
             .padding(.vertical, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDrop(of: NotchShelfView.chatDropTypes, isTargeted: nil) { providers in
+            handleMacFolderDrop(providers)
+        }
     }
 
     private var macSelectionBar: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(selectedMacEntry?.name ?? "\(filteredMacEntries.count) item\(filteredMacEntries.count == 1 ? "" : "s")")
+                Text(macSelectionTitle)
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(1)
-                Text(selectedMacEntry?.subtitle ?? macFooterSubtitle)
+                Text(macSelectionSubtitle)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.32))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             PopoutCircleButton(
+                symbol: "plus",
+                helpText: "New folder",
+                isPrimary: false,
+                isDisabled: false,
+                action: createMacFolder
+            )
+            PopoutCircleButton(
                 symbol: "eye",
                 helpText: "Quick Look selected file",
                 isPrimary: false,
-                isDisabled: selectedMacEntry?.isDirectory ?? true,
+                isDisabled: selectedPreviewableMacURL == nil,
                 action: previewSelectedMacFile
             )
             .keyboardShortcut(.space, modifiers: [])
             PopoutCircleButton(
+                symbol: "doc.on.doc",
+                helpText: "Copy selected paths",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: copySelectedMacPaths
+            )
+            PopoutCircleButton(
+                symbol: "paperclip",
+                helpText: "Attach selected to Hermes",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: attachSelectedMacItems
+            )
+            PopoutCircleButton(
+                symbol: "archivebox",
+                helpText: "Zip selected",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.isEmpty,
+                action: zipSelectedMacItems
+            )
+            PopoutCircleButton(
+                symbol: "pencil",
+                helpText: "Rename selected item",
+                isPrimary: false,
+                isDisabled: selectedMacURLs.count != 1,
+                action: renameSelectedMacItem
+            )
+            PopoutCircleButton(
                 symbol: "arrow.up.forward",
                 helpText: "Open selected item",
                 isPrimary: false,
-                isDisabled: selectedMacURL == nil,
+                isDisabled: selectedMacURLs.count != 1,
                 action: openSelectedMacItem
             )
             PopoutCircleButton(
                 symbol: "folder",
                 helpText: "Reveal selected item",
                 isPrimary: false,
-                isDisabled: selectedMacURL == nil,
+                isDisabled: selectedMacURLs.isEmpty,
                 action: revealSelectedMacItem
             )
         }
@@ -7382,49 +7421,72 @@ private struct HermesSidecarView: View {
     }
 
     private func macEntryRow(_ entry: HermesSidecarFileEntry) -> some View {
-        Button {
-            if entry.isDirectory {
-                macCurrentURL = entry.url
-                selectedMacURL = nil
-                macSearch = ""
-            } else {
-                selectedMacURL = entry.url
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: entry.symbol)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(entry.isDirectory ? Color(red: 0.34, green: 0.68, blue: 1.0) : .white.opacity(0.68))
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.06), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.name)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(1)
-                    Text(entry.subtitle)
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.34))
-                        .lineLimit(1)
+        let isSelected = selectedMacURLs.contains(entry.url)
+
+        return HStack(spacing: 8) {
+            Button {
+                toggleMacSelection(entry.url)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(isSelected ? Color(red: 0.32, green: 0.9, blue: 0.62) : .white.opacity(0.24))
+                    Image(systemName: entry.symbol)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(entry.isDirectory ? Color(red: 0.34, green: 0.68, blue: 1.0) : .white.opacity(0.68))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.name)
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(1)
+                        Text(entry.subtitle)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.34))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: entry.isDirectory ? "chevron.right" : "eye")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(.white.opacity(0.28))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 9)
+                .background(
+                    isSelected ? Color.white.opacity(0.105) : Color.white.opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(isSelected ? Color(red: 0.32, green: 0.9, blue: 0.62).opacity(0.55) : Color.white.opacity(0.055), lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
-            .background(
-                selectedMacURL == entry.url ? Color.white.opacity(0.105) : Color.white.opacity(0.045),
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(selectedMacURL == entry.url ? Color(red: 0.32, green: 0.9, blue: 0.62).opacity(0.55) : Color.white.opacity(0.055), lineWidth: 1)
-            )
+            .buttonStyle(NotchPressButtonStyle())
+
+            if entry.isDirectory {
+                Button {
+                    openMacFolder(entry.url)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.055), in: Circle())
+                }
+                .buttonStyle(NotchPressButtonStyle())
+                .help("Open folder")
+            }
         }
-        .buttonStyle(NotchPressButtonStyle())
+        .onDrag {
+            NSItemProvider(object: entry.url as NSURL)
+        }
         .contextMenu {
+            if entry.isDirectory {
+                Button("Open Folder") {
+                    openMacFolder(entry.url)
+                }
+            }
+            Button(isSelected ? "Deselect" : "Select") {
+                toggleMacSelection(entry.url)
+            }
             Button("Open") {
                 NSWorkspace.shared.open(entry.url)
             }
@@ -7435,6 +7497,15 @@ private struct HermesSidecarView: View {
                 Button("Quick Look") {
                     previewMacFile(entry.url)
                 }
+            }
+            Button("Copy Path") {
+                copyMacPaths([entry.url])
+            }
+            Button("Attach to Hermes") {
+                attachMacItems([entry.url])
+            }
+            Button("Zip") {
+                zipMacItems([entry.url])
             }
         }
     }
@@ -7888,6 +7959,40 @@ private struct HermesSidecarView: View {
         return macEntries.first { $0.url == selectedMacURL }
     }
 
+    private var selectedMacEntries: [HermesSidecarFileEntry] {
+        macEntries.filter { selectedMacURLs.contains($0.url) }
+    }
+
+    private var selectedMacItems: [URL] {
+        selectedMacEntries.map(\.url)
+    }
+
+    private var selectedPreviewableMacURL: URL? {
+        selectedMacEntries.first { !$0.isDirectory }?.url
+    }
+
+    private var macSelectionTitle: String {
+        if selectedMacURLs.isEmpty {
+            return "\(filteredMacEntries.count) item\(filteredMacEntries.count == 1 ? "" : "s")"
+        }
+        if selectedMacURLs.count == 1 {
+            return selectedMacEntry?.name ?? "1 selected"
+        }
+        return "\(selectedMacURLs.count) selected"
+    }
+
+    private var macSelectionSubtitle: String {
+        if selectedMacURLs.isEmpty {
+            return macFooterSubtitle
+        }
+        if selectedMacURLs.count == 1 {
+            return selectedMacEntry?.subtitle ?? "Selected item"
+        }
+        let folders = selectedMacEntries.filter(\.isDirectory).count
+        let files = max(0, selectedMacURLs.count - folders)
+        return "\(files) file\(files == 1 ? "" : "s"), \(folders) folder\(folders == 1 ? "" : "s")"
+    }
+
     private var canShowMoreMacEntries: Bool {
         let trimmed = macSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filteredCount = trimmed.isEmpty ? macEntries.count : macEntries.filter { $0.name.lowercased().contains(trimmed) }.count
@@ -7957,6 +8062,9 @@ private struct HermesSidecarView: View {
                 case .success(let entries):
                     macEntries = entries
                     macTotalEntryCount = entries.count
+                    selectedMacURLs = selectedMacURLs.filter { selectedURL in
+                        entries.contains { $0.url == selectedURL }
+                    }
                     if let selectedMacURL, !entries.contains(where: { $0.url == selectedMacURL }) {
                         self.selectedMacURL = nil
                     }
@@ -7965,6 +8073,7 @@ private struct HermesSidecarView: View {
                     macEntries = []
                     macTotalEntryCount = 0
                     selectedMacURL = nil
+                    selectedMacURLs.removeAll()
                     macError = error.localizedDescription
                 }
                 macIsLoading = false
@@ -8056,7 +8165,27 @@ private struct HermesSidecarView: View {
         guard parent.path != macCurrentURL.path else { return }
         macCurrentURL = parent
         selectedMacURL = nil
+        selectedMacURLs.removeAll()
         macSearch = ""
+    }
+
+    private func openMacFolder(_ url: URL) {
+        macCurrentURL = url
+        selectedMacURL = nil
+        selectedMacURLs.removeAll()
+        macSearch = ""
+    }
+
+    private func toggleMacSelection(_ url: URL) {
+        if selectedMacURLs.contains(url) {
+            selectedMacURLs.remove(url)
+            if selectedMacURL == url {
+                selectedMacURL = selectedMacURLs.first
+            }
+        } else {
+            selectedMacURLs.insert(url)
+            selectedMacURL = url
+        }
     }
 
     private func openParentVaultFolder() {
@@ -8068,8 +8197,8 @@ private struct HermesSidecarView: View {
     }
 
     private func previewSelectedMacFile() {
-        guard let entry = selectedMacEntry, !entry.isDirectory else { return }
-        previewMacFile(entry.url)
+        guard let url = selectedPreviewableMacURL else { return }
+        previewMacFile(url)
     }
 
     private func previewMacFile(_ url: URL) {
@@ -8079,13 +8208,182 @@ private struct HermesSidecarView: View {
     }
 
     private func openSelectedMacItem() {
-        guard let selectedMacURL else { return }
+        guard selectedMacURLs.count == 1, let selectedMacURL = selectedMacURLs.first else { return }
         NSWorkspace.shared.open(selectedMacURL)
     }
 
     private func revealSelectedMacItem() {
-        guard let selectedMacURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([selectedMacURL])
+        let urls = selectedMacItems
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    private func copySelectedMacPaths() {
+        copyMacPaths(selectedMacItems)
+    }
+
+    private func copyMacPaths(_ urls: [URL]) {
+        let paths = urls.map(\.path)
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+        state.statusMessage = paths.count == 1 ? "Copied path." : "Copied \(paths.count) paths."
+    }
+
+    private func attachSelectedMacItems() {
+        attachMacItems(selectedMacItems)
+    }
+
+    private func attachMacItems(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        for url in urls {
+            let attachment = NotchChatAttachment(url: url, kind: sidecarChatAttachmentKind(for: url))
+            if !pendingAttachments.contains(where: { $0.url == attachment.url }) {
+                pendingAttachments.append(attachment)
+            }
+        }
+        activeSection = .chat
+        state.statusMessage = "Attached \(urls.count) Mac item\(urls.count == 1 ? "" : "s") to Hermes."
+    }
+
+    private func sidecarChatAttachmentKind(for url: URL) -> NotchChatAttachmentKind {
+        if url.isFileURL {
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                return .localFolder
+            }
+
+            let ext = url.pathExtension.lowercased()
+            if ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp"].contains(ext) {
+                return .localImage
+            }
+            if ["mov", "mp4", "m4v", "avi", "mkv", "webm"].contains(ext) {
+                return .localVideo
+            }
+            return .localFile
+        }
+
+        let ext = url.pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "gif", "webp", "heic"].contains(ext) {
+            return .remoteImage
+        }
+        return .remoteFile
+    }
+
+    private func zipSelectedMacItems() {
+        zipMacItems(selectedMacItems)
+    }
+
+    private func zipMacItems(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try MacFileOperationService.archive(urls) }
+            await MainActor.run {
+                switch result {
+                case .success(let archive):
+                    selectedMacURLs = [archive]
+                    selectedMacURL = archive
+                    reloadMacEntries()
+                    state.statusMessage = "Created \(archive.lastPathComponent)."
+                case .failure(let error):
+                    state.statusMessage = "Zip failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func createMacFolder() {
+        guard let name = promptForMacItemName(title: "New Folder", message: "Create a folder in \(macCurrentURL.lastPathComponent.isEmpty ? macCurrentURL.path : macCurrentURL.lastPathComponent).", defaultValue: "New Folder") else { return }
+        do {
+            let url = try MacFileOperationService.createFolder(in: macCurrentURL, named: name)
+            selectedMacURLs = [url]
+            selectedMacURL = url
+            reloadMacEntries()
+            state.statusMessage = "Created \(url.lastPathComponent)."
+        } catch {
+            state.statusMessage = "New folder failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func renameSelectedMacItem() {
+        guard selectedMacURLs.count == 1, let url = selectedMacURLs.first else { return }
+        guard let name = promptForMacItemName(title: "Rename", message: "Rename \(url.lastPathComponent).", defaultValue: url.lastPathComponent) else { return }
+        do {
+            let renamed = try MacFileOperationService.rename(url, to: name)
+            selectedMacURLs = [renamed]
+            selectedMacURL = renamed
+            reloadMacEntries()
+            state.statusMessage = "Renamed to \(renamed.lastPathComponent)."
+        } catch {
+            state.statusMessage = "Rename failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleMacFolderDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            handled = true
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let sourceURL: URL?
+                if let data = item as? Data {
+                    sourceURL = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let url = item as? URL {
+                    sourceURL = url
+                } else {
+                    sourceURL = nil
+                }
+                guard let sourceURL else { return }
+                Task { @MainActor in
+                    copyDroppedMacItem(sourceURL)
+                }
+            }
+        }
+        return handled
+    }
+
+    private func copyDroppedMacItem(_ sourceURL: URL) {
+        let destination = uniqueMacDropURL(for: sourceURL.lastPathComponent)
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destination)
+            selectedMacURLs = [destination]
+            selectedMacURL = destination
+            reloadMacEntries()
+            state.statusMessage = "Copied \(sourceURL.lastPathComponent) here."
+        } catch {
+            state.statusMessage = "Copy failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func uniqueMacDropURL(for filename: String) -> URL {
+        let basename = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        let ext = URL(fileURLWithPath: filename).pathExtension
+        var candidate = macCurrentURL.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+        for index in 2...999 {
+            candidate = macCurrentURL.appendingPathComponent("\(basename) \(index)")
+            if !ext.isEmpty {
+                candidate = candidate.appendingPathExtension(ext)
+            }
+            if !FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return macCurrentURL.appendingPathComponent("\(basename) \(UUID().uuidString)").appendingPathExtension(ext)
+    }
+
+    private func promptForMacItemName(title: String, message: String, defaultValue: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = defaultValue
+        alert.accessoryView = field
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
     }
 
     private func loadVaultNote(_ url: URL) {

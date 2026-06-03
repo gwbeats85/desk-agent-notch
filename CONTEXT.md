@@ -54,6 +54,7 @@ Both surfaces talk through the Desk Agent bridge contract.
 - Hermes Sidecar slides out from the right edge with Chat, Music, Mac, Vault, Servers, Actions, and System sections.
 - Chat accepts a shared attachment stack across top Notch, Sidecar, and pop-out: files, folders, images, videos, URLs, latest capture, clipboard, and Mac context.
 - Visible local chat history is capped so the UI does not grow forever while Hermes keeps deeper continuity through the session id.
+- The Sidecar Mac tab is a guarded Finder-style layer: browse, multi-select, Quick Look, drag out, copy paths, attach to Hermes, create folders, rename one item, zip selections, and copy dropped files into the current folder. Destructive actions like delete/move/overwrite should remain explicit future work with confirmations.
 - Screenshot capture, thumbnail stack, shelf batches, copy/save, annotation, and board workflows exist.
 - MarkShot capture is now a module inside Desk Agent, not the product boundary.
 - Quick notes append to a configurable inbox path.
