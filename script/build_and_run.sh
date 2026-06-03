@@ -68,6 +68,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>MarkShot uses speech recognition only when you turn on optional wake phrase listening in the Notch.</string>
   <key>NSRemindersUsageDescription</key>
   <string>MarkShot uses Reminders access only to show and manage your Apple Reminders from the Notch.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>MarkShot uses Calendar access only to show your upcoming Apple Calendar events from the Notch.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>MarkShot uses Calendar access only to show your upcoming Apple Calendar events from the Notch.</string>
 </dict>
 </plist>
 PLIST

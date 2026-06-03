@@ -277,6 +277,7 @@ struct NotchShelfView: View {
     @StateObject private var liveVoice = NotchLiveVoiceController()
     @StateObject private var wakePhrase = NotchWakePhraseController()
     @StateObject private var reminders = NotchRemindersStore()
+    @StateObject private var calendarAgenda = NotchCalendarStore()
     @State private var liveVoiceBridgeMounted = false
     @State private var qaAutoStopTriggered = false
 
@@ -489,6 +490,7 @@ struct NotchShelfView: View {
             restoreChatHistory()
             loadSwitchboardServices()
             reminders.load()
+            calendarAgenda.load()
             refreshLiveReadiness()
             if qaAutoStartLiveEnabled {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -518,6 +520,7 @@ struct NotchShelfView: View {
         .onChange(of: activeModule) { module in
             if module == .home {
                 reminders.load()
+                calendarAgenda.load()
             }
         }
         .onChange(of: state.requestedNotchModule) { _ in
@@ -1178,14 +1181,14 @@ struct NotchShelfView: View {
             VStack(alignment: .leading, spacing: 8) {
                 homeSectionHeader(symbol: "checklist", title: "Reminders", trailing: reminders.statusBadge)
 
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 6) {
                     remindersSummaryPill
 
                     if reminders.items.isEmpty {
                         Text(reminders.emptyMessage)
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white.opacity(0.38))
-                            .frame(maxWidth: .infinity, minHeight: 78 + stretch, alignment: .center)
+                            .frame(maxWidth: .infinity, minHeight: 48 + stretch * 0.35, alignment: .center)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 6)
                             .background(Color.white.opacity(0.018), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1199,7 +1202,7 @@ struct NotchShelfView: View {
                             }
                             .padding(.vertical, 1)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 78 + stretch, maxHeight: 78 + stretch, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, minHeight: 48 + stretch * 0.35, maxHeight: 48 + stretch * 0.35, alignment: .topLeading)
                     }
 
                     HStack(spacing: 6) {
@@ -1208,6 +1211,45 @@ struct NotchShelfView: View {
                         }
                         homeMiniButton(symbol: "arrow.up.forward.app", title: "Open Apple Reminders") {
                             openAppleReminders()
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+
+                Divider().overlay(Color.white.opacity(0.07))
+
+                homeSectionHeader(symbol: "calendar", title: "Calendar", trailing: calendarAgenda.statusBadge)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    calendarSummaryPill
+
+                    if calendarAgenda.items.isEmpty {
+                        Text(calendarAgenda.emptyMessage)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.38))
+                            .frame(maxWidth: .infinity, minHeight: 40 + stretch * 0.3, alignment: .center)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 6)
+                            .background(Color.white.opacity(0.018), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.035), lineWidth: 1))
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(calendarAgenda.items) { item in
+                                    calendarEventRow(item)
+                                }
+                            }
+                            .padding(.vertical, 1)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 40 + stretch * 0.3, maxHeight: 40 + stretch * 0.3, alignment: .topLeading)
+                    }
+
+                    HStack(spacing: 6) {
+                        homeMiniButton(symbol: "arrow.clockwise", title: "Refresh calendar") {
+                            calendarAgenda.load()
+                        }
+                        homeMiniButton(symbol: "arrow.up.forward.app", title: "Open Apple Calendar") {
+                            openAppleCalendar()
                         }
                         Spacer(minLength: 0)
                     }
@@ -1227,6 +1269,15 @@ struct NotchShelfView: View {
             title: reminders.statusTitle,
             detail: reminders.statusDetail,
             tint: reminders.tintColor
+        )
+    }
+
+    private var calendarSummaryPill: some View {
+        homeStatusPill(
+            symbol: calendarAgenda.statusSymbol,
+            title: calendarAgenda.statusTitle,
+            detail: calendarAgenda.statusDetail,
+            tint: calendarAgenda.tintColor
         )
     }
 
@@ -1253,6 +1304,31 @@ struct NotchShelfView: View {
         .background(Color.white.opacity(reminder.isOverdue ? 0.046 : 0.028), in: Capsule())
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.04), lineWidth: 1))
         .help(reminder.subtitle)
+    }
+
+    private func calendarEventRow(_ item: NotchCalendarItem) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: item.isNow ? "calendar.badge.clock" : "calendar")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(item.isNow ? Color(red: 0.32, green: 0.9, blue: 0.62) : item.tint.opacity(0.9))
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+                Text(item.subtitle)
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.32))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 24)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(item.isNow ? 0.046 : 0.028), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.04), lineWidth: 1))
+        .help(item.subtitle)
     }
 
     private var homeHermesDetail: String {
@@ -1598,6 +1674,11 @@ struct NotchShelfView: View {
     private func openAppleReminders() {
         launchApp(name: "Reminders")
         state.statusMessage = "Opening Apple Reminders."
+    }
+
+    private func openAppleCalendar() {
+        launchApp(name: "Calendar")
+        state.statusMessage = "Opening Apple Calendar."
     }
 
     private func openHermesSkillsReference() {
@@ -10513,6 +10594,173 @@ private struct NotchReminderItem: Identifiable, Hashable {
         formatter.unitsStyle = .short
         return formatter
     }()
+}
+
+private struct NotchCalendarItem: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let calendarName: String
+    let startDate: Date
+    let endDate: Date
+    let isAllDay: Bool
+    let tint: Color
+
+    var isNow: Bool {
+        let now = Date()
+        return startDate <= now && endDate >= now
+    }
+
+    var subtitle: String {
+        let timeText = isAllDay ? "All day" : Self.timeFormatter.string(from: startDate)
+        let dayText = Self.relativeDateFormatter.localizedString(for: startDate, relativeTo: Date())
+        return "\(calendarName) - \(dayText), \(timeText)"
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+}
+
+@MainActor
+private final class NotchCalendarStore: ObservableObject {
+    @Published private(set) var items: [NotchCalendarItem] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var statusTitle = "Apple Calendar"
+    @Published private(set) var statusDetail = "Checking access"
+    @Published private(set) var statusBadge = "Apple"
+    @Published private(set) var statusSymbol = "calendar"
+    @Published private(set) var tintColor = Color(red: 0.74, green: 0.56, blue: 1.0)
+    @Published private(set) var emptyMessage = "No events loaded yet."
+
+    private let store = EKEventStore()
+    private var hasRequestedAccess = false
+
+    func load() {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        if Self.isGranted(status) {
+            fetchEvents()
+            return
+        }
+
+        switch status {
+        case .notDetermined:
+            requestAccess()
+        case .denied, .restricted:
+            showPermissionBlocked()
+        default:
+            showPermissionBlocked()
+        }
+    }
+
+    private func requestAccess() {
+        guard !hasRequestedAccess else { return }
+        hasRequestedAccess = true
+        isLoading = true
+        statusTitle = "Calendar access"
+        statusDetail = "Waiting for permission"
+        statusBadge = "allow"
+        statusSymbol = "lock.open"
+        emptyMessage = "Allow Calendar access when macOS asks."
+
+        if #available(macOS 14.0, *) {
+            store.requestFullAccessToEvents { [weak self] granted, _ in
+                Task { @MainActor in
+                    self?.handleAccessResult(granted)
+                }
+            }
+        } else {
+            store.requestAccess(to: .event) { [weak self] granted, _ in
+                Task { @MainActor in
+                    self?.handleAccessResult(granted)
+                }
+            }
+        }
+    }
+
+    private func handleAccessResult(_ granted: Bool) {
+        isLoading = false
+        if granted {
+            fetchEvents()
+        } else {
+            showPermissionBlocked()
+        }
+    }
+
+    private func fetchEvents() {
+        isLoading = true
+        statusTitle = "Loading calendar"
+        statusDetail = "Reading Apple Calendar"
+        statusBadge = "sync"
+        statusSymbol = "arrow.clockwise"
+        tintColor = Color(red: 0.74, green: 0.56, blue: 1.0)
+        emptyMessage = "Checking Apple Calendar..."
+
+        let start = Calendar.current.startOfDay(for: Date())
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: start) ?? Date().addingTimeInterval(7 * 24 * 60 * 60)
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        apply(store.events(matching: predicate))
+    }
+
+    private func apply(_ events: [EKEvent]) {
+        let mapped = events
+            .filter { !$0.isDetached }
+            .sorted { $0.startDate < $1.startDate }
+            .map { event in
+                NotchCalendarItem(
+                    id: event.eventIdentifier ?? event.calendarItemIdentifier,
+                    title: event.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled event" : event.title,
+                    calendarName: event.calendar.title,
+                    startDate: event.startDate,
+                    endDate: event.endDate,
+                    isAllDay: event.isAllDay,
+                    tint: Self.color(from: event.calendar.cgColor)
+                )
+            }
+
+        items = Array(mapped.prefix(12))
+        isLoading = false
+        statusTitle = items.isEmpty ? "No events" : "\(items.count) event\(items.count == 1 ? "" : "s")"
+        statusDetail = items.isEmpty ? "Apple Calendar is connected" : "Next 7 days"
+        statusBadge = items.isEmpty ? "empty" : "\(items.count)"
+        statusSymbol = items.isEmpty ? "checkmark.circle" : "calendar"
+        tintColor = items.contains { $0.isNow } ? Color(red: 0.32, green: 0.9, blue: 0.62) : Color(red: 0.74, green: 0.56, blue: 1.0)
+        emptyMessage = "No Apple Calendar events this week."
+    }
+
+    private func showPermissionBlocked() {
+        items = []
+        isLoading = false
+        statusTitle = "Calendar blocked"
+        statusDetail = "Allow access in Privacy"
+        statusBadge = "blocked"
+        statusSymbol = "lock.fill"
+        tintColor = .orange
+        emptyMessage = "Enable Calendar access for MarkShot in System Settings."
+    }
+
+    private static func isGranted(_ status: EKAuthorizationStatus) -> Bool {
+        if status == .authorized {
+            return true
+        }
+        if #available(macOS 14.0, *), status == .fullAccess {
+            return true
+        }
+        return false
+    }
+
+    private static func color(from cgColor: CGColor?) -> Color {
+        guard let cgColor else { return Color(red: 0.74, green: 0.56, blue: 1.0) }
+        return Color(cgColor: cgColor)
+    }
 }
 
 @MainActor

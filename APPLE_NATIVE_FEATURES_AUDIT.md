@@ -28,9 +28,10 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
 | Preview/open attachments | Quick Look / native document preview | custom preview only for agent-specific cards | Done for shelf batches, Sidecar Mac files, and embedded chat local image attachments; candidate for popout/note attachments |
 | Browse/manage Mac files | Finder, Quick Look, Trash, pasteboard, native file dialogs | agent context attach/approved automation | Sidecar Mac tab is a guarded Finder-style layer; permanent delete/overwrite stay out until explicit confirmation model exists |
 | System settings and permissions | System Settings deep links | none | Sidecar System launches core settings panes for Privacy, Accessibility, Screen Recording, Sound, Displays, and Network |
-| Calendar/date commitments | Apple Calendar/EventKit | Hermes planning/routing | Candidate; not wired yet |
+| Calendar/date commitments | Apple Calendar/EventKit | Hermes planning/routing | First read-only Home agenda wired on Mac; create/edit should wait for explicit confirmations |
 | Contacts/people context | Contacts framework / native Contacts app | Hermes relationship memory only when needed | Candidate; not wired yet |
 | Apple Watch access | App Intents, Shortcuts, widgets/complications | bridge only for agent conversation/action routing | Future target; do not start a separate watch product |
+| Health / activity / sleep | HealthKit on iPhone/watchOS | iPhone companion summary into Hermes/Notch | Future iPhone app target; do not chase direct Mac HealthKit access |
 
 ## What Not To Duplicate
 
@@ -70,7 +71,8 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
    - Next: extend native previews to popout/note attachments when those attachment models stabilize.
 
 6. **Apple Calendar and Contacts**
-   - Calendar should be Apple EventKit first for date/time commitments, reminders, and schedule checks.
+   - Done on Mac: Home can request Calendar access and show upcoming Apple Calendar events for the next 7 days.
+   - Calendar should remain EventKit first for date/time commitments, reminders, and schedule checks.
    - Contacts should be native Contacts first for people lookup, not a custom people database.
    - Next: add read-only status/actions before allowing Hermes to create or edit events/contacts.
 
@@ -78,6 +80,11 @@ Use Desk Agent custom bridge features only when the payload needs agent context:
    - Use App Intents/Shortcuts as the first path so Watch, Action Button, Siri, and widgets can trigger the same Desk Agent actions.
    - Keep Hermes/bridge routing behind those intents.
    - Next: define the smallest Watch surface: Talk to Hermes, Check Status, Save Note, maybe Capture/Share proof.
+
+8. **HealthKit**
+   - Health/activity/sleep should come through the iPhone app or Watch-linked iPhone permissions.
+   - Mac Notch can display a daily summary after the phone app syncs it.
+   - Do not build a fake Mac-side Health reader.
 
 ## Source Pointers
 
