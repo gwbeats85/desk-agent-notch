@@ -6,8 +6,27 @@ LOG_PATH="${MARKSHOT_LOG:-${MARKSHOT_LOG_PATH:-/tmp/markshot-debug.log}}"
 REQUIRE_TRANSCRIPTS=0
 MARKSHOT_USER_DEFAULTS_DOMAIN="${MARKSHOT_USER_DEFAULTS_DOMAIN:-com.deskagent.MarkShot}"
 CHAT_HISTORY_KEY="${MARKSHOT_CHAT_HISTORY_KEY:-markshot.notch.chatHistoryJSON}"
+MARKSHOT_BUNDLE_ID="$(/usr/bin/defaults read /Applications/MarkShot.app/Contents/Info.plist CFBundleIdentifier 2>/dev/null || true)"
 strict_ready_readiness=0
 strict_exit_code=0
+
+resolve_defaults_domain() {
+  local key="$1"
+  if ! command -v defaults >/dev/null 2>&1; then
+    echo "$MARKSHOT_USER_DEFAULTS_DOMAIN"
+    return 0
+  fi
+  for candidate in "$MARKSHOT_USER_DEFAULTS_DOMAIN" "$MARKSHOT_BUNDLE_ID" com.deskagent.MarkShot; do
+    [ -z "$candidate" ] && continue
+    if defaults read "$candidate" "$key" >/dev/null 2>&1; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "$MARKSHOT_USER_DEFAULTS_DOMAIN"
+}
+
+MARKSHOT_USER_DEFAULTS_DOMAIN="$(resolve_defaults_domain "$CHAT_HISTORY_KEY")"
 
 for arg in "$@"; do
   case "$arg" in
@@ -301,7 +320,10 @@ if [ "$HAS_LOG" -eq 1 ]; then
 
   cp "$LOG_PATH" "$post_log_snapshot"
   echo "[notch-live-qa] Transcript bridge lines since run start:"
-  transcript_hits=$(diff -u "$pre_log_snapshot" "$post_log_snapshot" | rg -P 'live (user_transcript|assistant_transcript|bridge (start|stop|unavailable|reload|reset)|evaluate failed|setup failed|stream send failed|start requested|stop requested|bridge unavailable)|chat append (live )?(user|assistant)' || true)
+  transcript_hits=$(diff -u "$pre_log_snapshot" "$post_log_snapshot" | rg -P 'live (user_transcript|assistant_transcript|bridge (start|stop|unavailable|reload|reset)|evaluate failed|setup failed|stream send failed|start requested|stop requested|bridge unavailable|audio_diagnostic)|chat append (live )?(user|assistant)' || true)
+  if [ -z "$transcript_hits" ] && [ -r "$LOG_PATH" ]; then
+    transcript_hits=$(rg -P 'live (user_transcript|assistant_transcript|bridge (start|stop|unavailable|reload|reset)|evaluate failed|setup failed|stream send failed|start requested|stop requested|bridge unavailable|audio_diagnostic)|chat append (live )?(user|assistant)' "$LOG_PATH" || true)
+  fi
   if [ -n "$transcript_hits" ]; then
     echo "$transcript_hits"
   else
@@ -315,23 +337,33 @@ if [ "$HAS_LOG" -eq 1 ]; then
   transcript_hits_lc="$(printf '%s\n' "$transcript_hits" | tr '[:upper:]' '[:lower:]')"
   transcript_start_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live start requested' || echo 0)"
   transcript_stop_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live stop requested' || echo 0)"
+  audio_frame_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live audio_diagnostic reason=audio_frame' || echo 0)"
 user_transcript_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live user_transcript .*final=(true|1|yes|y|done|completed|complete|finished|\"true\"|\"1\"|\"yes\"|\"y\"|\"done\"|\"completed\"|\"complete\"|\"finished\"|final\(empty\)|matched stop phrase)' || echo 0)"
 assistant_transcript_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live assistant_transcript .*final=(true|1|yes|y|done|completed|complete|finished|\"true\"|\"1\"|\"yes\"|\"y\"|\"done\"|\"completed\"|\"complete\"|\"finished\"|final\(empty\)|matched stop phrase)' || echo 0)"
   chat_append_user_hits="$(printf '%s\n' "$transcript_hits" | rg -c "chat append live user" || echo 0)"
   chat_append_assistant_hits="$(printf '%s\n' "$transcript_hits" | rg -c "chat append live assistant" || echo 0)"
+  audio_diagnostic_hits="$(printf '%s\n' "$transcript_hits_lc" | rg -c 'live audio_diagnostic reason=' || echo 0)"
   bridge_error_hits="$(printf '%s\n' "$transcript_hits" | rg -c "live (bridge unavailable|evaluate failed|setup failed|stream send failed)" || echo 0)"
 
   echo "[notch-live-qa] Matched counts: user_transcript=$user_transcript_hits assistant_transcript=$assistant_transcript_hits chat_append_user=$chat_append_user_hits chat_append_assistant=$chat_append_assistant_hits"
 echo "[notch-live-qa] Transcript lifecycle markers: start=$transcript_start_hits stop=$transcript_stop_hits"
+echo "[notch-live-qa] Audio diagnostics: frames=$audio_frame_hits"
 
   if [ "$REQUIRE_TRANSCRIPTS" -eq 1 ]; then
     if [ "$transcript_start_hits" -lt 1 ]; then
       echo "[notch-live-qa] Strict mode failed: no live start marker was observed for this window."
       strict_failed=1
     fi
+    if [ "$audio_frame_hits" -lt 1 ]; then
+      echo "[notch-live-qa] Strict mode failed: no live audio frame events observed."
+      strict_failed=1
+    fi
     if [ "$transcript_stop_hits" -lt 1 ]; then
       echo "[notch-live-qa] Strict mode failed: no live stop marker was observed for this window."
       strict_failed=1
+    fi
+    if [ "$audio_frame_hits" -lt 1 ] && [ "$transcript_start_hits" -gt 0 ] && [ "$transcript_stop_hits" -gt 0 ]; then
+      echo "[notch-live-qa] Strict mode failed: live session started/stopped with zero audio frames."
     fi
     if [ "$before_sessions_empty" -eq 0 ]; then
       echo "[notch-live-qa] Strict mode failed: pre-existing live sessions detected."

@@ -64,6 +64,7 @@ final class AppState: ObservableObject {
     @Published var isVideoFrameLabActive = false
     @Published var lastRecordedClipURL: URL?
     @Published var shelfBatches: [CaptureShelfBatch] = []
+    @Published var requestedNotchModule: String?
     @Published var notchListeningEnabled = false
     @Published var notchPlaybackActive = false
     @Published var notchShelfExpanded = false
@@ -406,11 +407,13 @@ final class AppState: ObservableObject {
         captureThumbnailControllers.removeAll()
         captureThumbnailCount = 0
         statusMessage = "Sent \(images.count) screenshot\(images.count == 1 ? "" : "s") to the notch shelf."
+        requestNotchModule("shelf")
         ensureShelfWindow().showExpanded()
     }
 
     func showNotchShelf() {
         MarkShotLog.write("show notch shelf requested batches=\(shelfBatches.count)")
+        requestNotchModule("shelf")
         let controller = ensureShelfWindow()
         if shelfBatches.isEmpty {
             controller.showCollapsed()
@@ -687,6 +690,10 @@ final class AppState: ObservableObject {
         trimShelfBatchesIfNeeded()
     }
 
+    func requestNotchModule(_ rawValue: String) {
+        requestedNotchModule = rawValue
+    }
+
     private func trimShelfBatchesIfNeeded() {
         guard shelfBatches.count > Self.maxShelfBatches else { return }
         let overflow = shelfBatches.count - Self.maxShelfBatches
@@ -755,8 +762,14 @@ final class AppState: ObservableObject {
     // MARK: - Record Clip
 
     func recordClip() {
+        if isRecordingClip {
+            stopClipRecording()
+            return
+        }
+
+        MarkShotLog.write("clip recording start requested")
         isRecordingClip = true
-        statusMessage = "Starting screen recording..."
+        statusMessage = "Select an area, then click Record again to stop. The clip will land in Shelf."
         hideToolbar()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -766,16 +779,34 @@ final class AppState: ObservableObject {
                     self.isRecordingClip = false
                     switch result {
                     case .success(let url):
+                        MarkShotLog.write("clip recording saved path=\(url.path)")
                         self.lastRecordedClipURL = url
                         self.prependShelfBatch(CaptureShelfBatch(clips: [url], createdAt: Date()))
                         self.statusMessage = "Clip saved to the notch shelf."
+                        self.requestNotchModule("shelf")
                         self.ensureShelfWindow().showExpanded()
                     case .failure(let error):
+                        MarkShotLog.write("clip recording failed: \(error.localizedDescription)")
                         self.statusMessage = "Recording stopped: \(error.localizedDescription)"
-                        self.showToolbar()
+                        self.requestNotchModule("shelf")
+                        self.ensureShelfWindow().showExpanded()
                     }
                 }
             }
+        }
+    }
+
+    private func stopClipRecording() {
+        switch ScreenshotService.stopClipRecording() {
+        case .success(let url):
+            MarkShotLog.write("clip recording stop requested path=\(url.path)")
+            statusMessage = "Stopping clip recording..."
+        case .failure(let error):
+            MarkShotLog.write("clip recording stop failed: \(error.localizedDescription)")
+            isRecordingClip = false
+            statusMessage = error.localizedDescription
+            requestNotchModule("shelf")
+            ensureShelfWindow().showExpanded()
         }
     }
 
@@ -800,7 +831,8 @@ final class AppState: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.statusMessage = error.localizedDescription
-                    self.showToolbar()
+                    self.requestNotchModule("shelf")
+                    self.ensureShelfWindow().showExpanded()
                 }
             }
         }
@@ -835,7 +867,8 @@ final class AppState: ObservableObject {
                 await MainActor.run {
                     self.isSendingClipToVideoFrame = false
                     self.statusMessage = error.localizedDescription
-                    self.showToolbar()
+                    self.requestNotchModule("shelf")
+                    self.ensureShelfWindow().showExpanded()
                 }
             }
         }

@@ -48,7 +48,7 @@ Path map: `PATHS.md`
 - Click a thumbnail to open it in the editor, or hover it to send the stack to the notch shelf, copy, or dismiss without opening the editor.
 - Hover any thumbnail and use the shelf button to move the whole current thumbnail stack into the notch shelf as one batch. Menu bar → Save All Capture Thumbnails still saves the current stack to a folder.
 - Delay capture — 3s or 5s countdown via the timer menu in the toolbar. Toolbar stays visible so you can set up what you want to capture (open a menu, hover a state, etc.) before the shot fires.
-- Record a selected-area video clip via the Record button or menu bar, then send the saved `.mov` straight to VideoFrame Lab from the toolbar.
+- Record a selected-area video clip via the Record button or menu bar, click Record again to stop, then find the saved `.mov` in Shelf or send it straight to VideoFrame Lab from the toolbar.
 - Open VideoFrame Lab from MarkShot. If the local server is not running, MarkShot starts it on port 3000 or the next free port, then auto-stops it after 30 idle minutes.
 
 **Board**
@@ -106,8 +106,8 @@ Path map: `PATHS.md`
 
 1. Hit Cmd+Opt+5, or Record in the toolbar/menu bar.
 2. macOS recording UI opens in forced mouse-selection video mode — drag the rectangle you want, then start recording.
-3. It records until you hit the stop button in the menu bar.
-4. When recording stops, MarkShot shows a Send button.
+3. It records until you click Record again in Desk Agent.
+4. When recording stops, the clip is added to Shelf and MarkShot shows a Send button.
 5. Hit Send to upload the `.mov` to VideoFrame Lab. MarkShot starts `localhost:3000` or the next free port if needed and opens the imported job.
 6. Pick frame density, paste any transcript notes, process, copy the AI motion brief or export the ZIP.
 7. Use menu bar → Stop VideoFrame Lab when done, or let MarkShot auto-stop it after 30 idle minutes.

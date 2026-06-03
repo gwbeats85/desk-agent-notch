@@ -97,8 +97,8 @@ private struct HelpView: View {
 
                     HelpSection("Record Clip  →  VideoFrame Lab") {
                         HelpRow("1. Hit Cmd+Opt+5 or Record", key: "")
-                        HelpRow("2. Pick your area — macOS records until you stop", key: "")
-                        HelpRow("3. Desk Agent keeps the .mov as the last clip", key: "")
+                        HelpRow("2. Pick your area — click Record again to stop", key: "")
+                        HelpRow("3. Desk Agent puts the finished .mov in Shelf", key: "")
                         HelpRow("4. Send it to VideoFrame Lab from toolbar", key: "localhost:3000")
                         HelpRow("5. Set frame density, copy AI prompt, export ZIP", key: "")
                     }

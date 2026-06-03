@@ -10,6 +10,9 @@ APP_PATH="/Applications/MarkShot.app"
 APP_LOG_PATH="${MARKSHOT_LOG_PATH:-${MARKSHOT_LOG:-/tmp/markshot-debug.log}}"
 MARKSHOT_USER_DEFAULTS_DOMAIN="${MARKSHOT_USER_DEFAULTS_DOMAIN:-com.deskagent.MarkShot}"
 MARKSHOT_CHAT_HISTORY_KEY="${MARKSHOT_CHAT_HISTORY_KEY:-markshot.notch.chatHistoryJSON}"
+MARKSHOT_START_TIMEOUT_SECONDS="${MARKSHOT_START_TIMEOUT_SECONDS:-12}"
+AUTO_START_MARKSHOT="${AUTO_START_MARKSHOT:-1}"
+MARKSHOT_BUNDLE_ID="$(/usr/bin/defaults read /Applications/MarkShot.app/Contents/Info.plist CFBundleIdentifier 2>/dev/null || true)"
 LOG_DIR="$(dirname "$LOG_PATH")"
 RUN_ID="$(date -u +'%Y%m%dT%H%M%SZ')-$$-${RANDOM}-${RANDOM}"
 APP_LOG_PRE_SIZE=0
@@ -19,6 +22,44 @@ PRE_CHAT_MESSAGES='[]'
 PRE_CHAT_COUNT=0
 RUN_END_MARKER_EMITTED=0
 RUN_STATUS="failed"
+
+resolve_defaults_domain() {
+  local key="$1"
+  if ! command -v defaults >/dev/null 2>&1; then
+    echo "$MARKSHOT_USER_DEFAULTS_DOMAIN"
+    return 0
+  fi
+  for candidate in "$MARKSHOT_USER_DEFAULTS_DOMAIN" "$MARKSHOT_BUNDLE_ID" com.deskagent.MarkShot; do
+    [ -z "$candidate" ] && continue
+    if defaults read "$candidate" "$key" >/dev/null 2>&1; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "$MARKSHOT_USER_DEFAULTS_DOMAIN"
+}
+
+MARKSHOT_USER_DEFAULTS_DOMAIN="$(resolve_defaults_domain "$MARKSHOT_CHAT_HISTORY_KEY")"
+if [ -z "$MARKSHOT_BUNDLE_ID" ]; then
+  MARKSHOT_BUNDLE_ID="$MARKSHOT_USER_DEFAULTS_DOMAIN"
+fi
+
+mic_permission_state() {
+  local client_id="$1"
+  local client_label="$2"
+  local row
+  local auth_value
+  local auth_reason
+
+  row="$(sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db "select client,auth_value,auth_reason from access where service='kTCCServiceMicrophone' and client='$client_id' limit 1" 2>/dev/null || true)"
+  if [ -z "$row" ]; then
+    echo "[run-spoken-live-qa] Mic permission: no TCC row for ${client_label} (${client_id})"
+    return 1
+  fi
+  auth_value="$(printf '%s\n' "$row" | awk -F'|' '{print $2}')"
+  auth_reason="$(printf '%s\n' "$row" | awk -F'|' '{print $3}')"
+  echo "[run-spoken-live-qa] Mic permission for ${client_label} (${client_id}): auth_value=${auth_value} auth_reason=${auth_reason}"
+}
 
 log_run_end_marker() {
   local run_status="${1:-failed}"
@@ -114,8 +155,29 @@ if [ ! -d "$APP_PATH" ]; then
     echo "[run-spoken-live-qa]   cd <repo-root> && ./script/build_and_run.sh --install"
   exit 3
 fi
+
 if ! pgrep -f "/Applications/MarkShot.app/Contents/MacOS/MarkShot" >/dev/null; then
   echo "[run-spoken-live-qa] MarkShot process is not running."
+  if [ "$AUTO_START_MARKSHOT" = "1" ]; then
+    echo "[run-spoken-live-qa] AUTO_START_MARKSHOT enabled; attempting to launch $APP_PATH."
+    if ! open "$APP_PATH" >/dev/null 2>&1; then
+      echo "[run-spoken-live-qa] Failed to launch MarkShot automatically."
+      echo "[run-spoken-live-qa] Start /Applications/MarkShot.app manually and retry this command."
+      exit 3
+    fi
+    waited_seconds=0
+    while [ "$waited_seconds" -lt "$MARKSHOT_START_TIMEOUT_SECONDS" ]; do
+      if pgrep -f "/Applications/MarkShot.app/Contents/MacOS/MarkShot" >/dev/null; then
+        echo "[run-spoken-live-qa] MarkShot process detected after ${waited_seconds}s."
+        break
+      fi
+      sleep 1
+      waited_seconds=$((waited_seconds + 1))
+    done
+  fi
+fi
+if ! pgrep -f "/Applications/MarkShot.app/Contents/MacOS/MarkShot" >/dev/null; then
+  echo "[run-spoken-live-qa] MarkShot did not start after wait window."
   echo "[run-spoken-live-qa] Start /Applications/MarkShot.app and retry this command."
   exit 3
 fi
@@ -161,6 +223,16 @@ echo "[run-spoken-live-qa] Starting strict spoken QA. Open MarkShot and run List
 echo "[run-spoken-live-qa] Log path: $LOG_PATH"
 echo "[run-spoken-live-qa] App debug log path: $APP_LOG_PATH (env: MARKSHOT_LOG_PATH or MARKSHOT_LOG)"
 echo "[run-spoken-live-qa] App: /Applications/MarkShot.app"
+echo "[run-spoken-live-qa] App bundle id: ${MARKSHOT_BUNDLE_ID:-unknown}"
+if command -v sqlite3 >/dev/null 2>&1; then
+  mic_permission_state "$MARKSHOT_BUNDLE_ID" "app bundle id" || true
+  for candidate in "$MARKSHOT_USER_DEFAULTS_DOMAIN" com.deskagent.MarkShot; do
+    [ "$candidate" = "$MARKSHOT_BUNDLE_ID" ] && continue
+    mic_permission_state "$candidate" "legacy candidate" || true
+  done
+else
+  echo "[run-spoken-live-qa] sqlite3 not available; skipping microphone permission precheck."
+fi
 
 echo "[run-spoken-live-qa] App defaults domain: $MARKSHOT_USER_DEFAULTS_DOMAIN key: $MARKSHOT_CHAT_HISTORY_KEY"
 if [ -d "$APP_LOG_PATH" ]; then
@@ -232,6 +304,10 @@ if [ -r "$APP_LOG_PATH" ]; then
   APP_LOG_POST_SIZE="$(wc -c < "$APP_LOG_PATH" | tr -d ' ')"
   APP_LOG_DELTA=$((APP_LOG_POST_SIZE - APP_LOG_PRE_SIZE))
   echo "[run-spoken-live-qa] App debug log post-size: ${APP_LOG_POST_SIZE} bytes"
+  if [ "$APP_LOG_DELTA" -lt 0 ]; then
+    echo "[run-spoken-live-qa] App debug log shrank during run; treating delta as 0."
+    APP_LOG_DELTA=0
+  fi
   echo "[run-spoken-live-qa] App debug log delta: ${APP_LOG_DELTA} bytes"
   if [ "$APP_LOG_DELTA" -eq 0 ]; then
     echo "[run-spoken-live-qa] App debug log did not grow during this run; no app-side transcript events were observed."

@@ -5,6 +5,20 @@ struct MarkShotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
 
+    private var qaAutoStartLiveEnabled: Bool {
+        ProcessInfo.processInfo.environment["MARKSHOT_AUTO_START_LIVE"] == "1"
+    }
+
+    private var qaAutoStopDelay: TimeInterval? {
+        guard let rawDelay = ProcessInfo.processInfo.environment["MARKSHOT_AUTO_STOP_LIVE_SECONDS"] else {
+            return nil
+        }
+        guard let parsed = Double(rawDelay), parsed > 0 else {
+            return nil
+        }
+        return parsed
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -14,6 +28,16 @@ struct MarkShotApp: App {
                     NSApp.setActivationPolicy(.accessory)
                     state.hideToolbar()
                     state.showNotchShelf()
+                    if qaAutoStartLiveEnabled {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            NotificationCenter.default.post(name: .deskAgentStartTalk, object: nil)
+                        }
+                        if let autoStopDelay = qaAutoStopDelay {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1 + autoStopDelay) {
+                                NotificationCenter.default.post(name: .deskAgentStartTalk, object: nil)
+                            }
+                        }
+                    }
                 }
         }
         .commands {
@@ -40,7 +64,7 @@ struct MarkShotApp: App {
 
                 Divider()
 
-                Button("Record Clip") {
+                Button(state.isRecordingClip ? "Stop Clip" : "Record Clip") {
                     state.recordClip()
                 }
                 .keyboardShortcut("5", modifiers: [.command, .option])

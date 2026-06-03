@@ -254,11 +254,26 @@ struct NotchShelfView: View {
     @StateObject private var wakePhrase = NotchWakePhraseController()
     @StateObject private var reminders = NotchRemindersStore()
     @State private var liveVoiceBridgeMounted = false
+    @State private var qaAutoStopTriggered = false
 
     private let hermesClient = HermesDirectClient()
     private let bridgeClient = DeskAgentBridgeClient()
     private let maxLocalChatMessages = 80
     private let maxPersistedChatMessages = 20
+
+    private var qaAutoStartLiveEnabled: Bool {
+        ProcessInfo.processInfo.environment["MARKSHOT_AUTO_START_LIVE"] == "1"
+    }
+
+    private var qaAutoStopLiveDelay: TimeInterval? {
+        guard let rawDelay = ProcessInfo.processInfo.environment["MARKSHOT_AUTO_STOP_LIVE_SECONDS"] else {
+            return nil
+        }
+        guard let parsed = Double(rawDelay), parsed > 0 else {
+            return nil
+        }
+        return parsed
+    }
 
     private var totalCount: Int {
         state.shelfBatches.reduce(0) { $0 + $1.itemCount }
@@ -442,6 +457,7 @@ struct NotchShelfView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.8), value: expanded)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
+            applyRequestedModuleIfNeeded()
             if state.notchListeningEnabled || liveVoice.isActive {
                 mountLiveVoiceBridgeIfNeeded()
             }
@@ -450,6 +466,18 @@ struct NotchShelfView: View {
             loadSwitchboardServices()
             reminders.load()
             refreshLiveReadiness()
+            if qaAutoStartLiveEnabled {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    MarkShotLog.write("qa auto start live requested from notch shelf")
+                    triggerQAStartLive(attempt: 0)
+                }
+                if let autoStopDelay = qaAutoStopLiveDelay {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1 + autoStopDelay) {
+                        MarkShotLog.write("qa auto stop live timer fired after \(autoStopDelay)s")
+                        handleAutoStopRequested()
+                    }
+                }
+            }
             if wakeListeningEnabled, !liveVoice.isActive, !state.notchListeningEnabled {
                 startWakePhraseListening()
             }
@@ -467,6 +495,9 @@ struct NotchShelfView: View {
             if module == .home {
                 reminders.load()
             }
+        }
+        .onChange(of: state.requestedNotchModule) { _ in
+            applyRequestedModuleIfNeeded()
         }
         .onChange(of: wakeListeningEnabled) { enabled in
             if enabled {
@@ -530,6 +561,15 @@ struct NotchShelfView: View {
             }
             hermesElapsedSeconds = max(0, Int(now.timeIntervalSince(hermesStartedAt)))
         }
+    }
+
+    private func applyRequestedModuleIfNeeded() {
+        guard let rawValue = state.requestedNotchModule,
+              let module = NotchModule(rawValue: rawValue)
+        else { return }
+
+        activeModule = module
+        state.requestedNotchModule = nil
     }
 
     private var collapsedShelf: some View {
@@ -646,7 +686,7 @@ struct NotchShelfView: View {
             return CollapsedNotchStatus(
                 symbol: "record.circle",
                 title: "Recording",
-                detail: "clip",
+                detail: "click stop",
                 tint: Color(red: 1.0, green: 0.38, blue: 0.34),
                 isActive: true
             )
@@ -799,9 +839,20 @@ struct NotchShelfView: View {
             Divider()
                 .frame(height: 24)
                 .overlay(Color.white.opacity(0.16))
-            captureDockButton("Record clip", "record.circle", isActive: state.isRecordingClip) {
+            captureDockButton(state.isRecordingClip ? "Stop clip" : "Record clip", state.isRecordingClip ? "stop.circle.fill" : "record.circle", isActive: state.isRecordingClip) {
                 activeModule = .shelf
                 state.recordClip()
+            }
+            if state.lastRecordedClipURL != nil {
+                captureDockButton("Send clip to Frame Lab", "paperplane", isActive: state.isSendingClipToVideoFrame) {
+                    activeModule = .shelf
+                    state.sendLastClipToVideoFrameLab()
+                }
+            } else {
+                captureDockButton("Open Frame Lab", "film", isActive: state.isVideoFrameLabActive) {
+                    activeModule = .shelf
+                    state.openVideoFrameLab()
+                }
             }
             captureDockButton("Preview latest", "eye", isActive: false) {
                 activeModule = .shelf
@@ -903,13 +954,27 @@ struct NotchShelfView: View {
                 RailActionButtonView(title: "Capture region", symbol: "viewfinder") {
                     state.captureSelectedRegion()
                 }
-                RailActionButtonView(title: "Record clip", symbol: "record.circle") {
+                RailActionButtonView(title: state.isRecordingClip ? "Stop clip" : "Record clip", symbol: state.isRecordingClip ? "stop.circle.fill" : "record.circle") {
                     state.recordClip()
                 }
                 RailActionButtonView(title: "Clear note", symbol: "xmark") {
                     quickNoteDraft = ""
                 }
             case .shelf:
+                if state.isRecordingClip {
+                    RailActionButtonView(title: "Stop clip", symbol: "stop.circle.fill") {
+                        state.recordClip()
+                    }
+                }
+                if state.lastRecordedClipURL != nil {
+                    RailActionButtonView(title: "Send clip to Frame Lab", symbol: "paperplane") {
+                        state.sendLastClipToVideoFrameLab()
+                    }
+                } else {
+                    RailActionButtonView(title: "Open Frame Lab", symbol: "film") {
+                        state.openVideoFrameLab()
+                    }
+                }
                 RailActionButtonView(title: "Preview latest", symbol: "eye") {
                     state.previewLatestShelfBatch()
                 }
@@ -3904,6 +3969,34 @@ struct NotchShelfView: View {
         }
     }
 
+    private func triggerQAStartLive(attempt: Int) {
+        guard qaAutoStartLiveEnabled else { return }
+        guard !state.notchListeningEnabled, !liveVoice.isActive else { return }
+        guard attempt < 12 else {
+            MarkShotLog.write("qa auto start live gave up waiting for page ready")
+            return
+        }
+        if liveVoice.pageReady {
+            MarkShotLog.write("qa auto start live now invoking startTalkFromShortcut attempt=\(attempt)")
+            startTalkFromShortcut()
+            return
+        }
+        MarkShotLog.write("qa auto start live waiting for page ready attempt=\(attempt)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            self.triggerQAStartLive(attempt: attempt + 1)
+        }
+    }
+
+    private func handleAutoStopRequested() {
+        guard !qaAutoStopTriggered else { return }
+        qaAutoStopTriggered = true
+        guard state.notchListeningEnabled || liveVoice.isActive else {
+            state.statusMessage = "No active live session to stop."
+            return
+        }
+        stopLiveSession()
+    }
+
     private func mountLiveVoiceBridgeIfNeeded() {
         guard !liveVoiceBridgeMounted else { return }
         liveVoiceBridgeMounted = true
@@ -4159,13 +4252,14 @@ struct NotchShelfView: View {
     private func appendLiveVoiceTranscript(role: NotchChatRole, transcript: String) {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let voicePrefix = text.hasPrefix("Voice: ") ? text : "Voice: \(text)"
 
         switch role {
         case .user:
             MarkShotLog.write("chat append live user len=\(text.count)")
-            guard text != lastChatLiveUserTranscript else { return }
-            lastChatLiveUserTranscript = text
-            chatMessages.append(NotchChatMessage(role: .user, text: text, source: "live session"))
+            guard voicePrefix != lastChatLiveUserTranscript else { return }
+            lastChatLiveUserTranscript = voicePrefix
+            chatMessages.append(NotchChatMessage(role: .user, text: voicePrefix, source: "live session"))
         case .assistant:
             MarkShotLog.write("chat append live assistant len=\(text.count)")
             guard text != lastChatLiveAssistantTranscript else { return }

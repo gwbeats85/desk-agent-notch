@@ -38,6 +38,7 @@ final class WindowConfiguratorView: NSView {
             window.isMovableByWindowBackground = (image == nil)
 
             guard let image else {
+                window.orderOut(nil)
                 // Collapse back to toolbar height without moving the window's X/Y
                 if self.lastImageSize != nil {
                     self.lastImageSize = nil

@@ -30,11 +30,7 @@ struct ContentView: View {
     private var floatingToolBar: some View {
         VStack(spacing: 6) {
             if state.baseImage == nil {
-                HStack(spacing: 6) {
-                    captureControls
-                    Spacer(minLength: 0)
-                    launcherButton("Hide to menu bar", "xmark") { state.hideToolbar() }
-                }
+                EmptyView()
             } else {
                 HStack(spacing: 7) {
                     annotationControls
@@ -81,7 +77,7 @@ struct ContentView: View {
 
             toolbarDivider
 
-            launcherButton("Record Clip", "record.circle") { state.recordClip() }
+            launcherButton(state.isRecordingClip ? "Stop Clip" : "Record Clip", state.isRecordingClip ? "stop.circle.fill" : "record.circle") { state.recordClip() }
             launcherButton("Open VideoFrame Lab", "film") { state.openVideoFrameLab() }
             if state.isVideoFrameLabActive {
                 launcherButton("Stop VideoFrame Lab", "stop.circle") { state.stopVideoFrameLab() }

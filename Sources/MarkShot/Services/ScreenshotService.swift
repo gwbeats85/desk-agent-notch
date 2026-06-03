@@ -9,7 +9,10 @@ enum ScreenshotMode {
 enum ScreenshotError: LocalizedError {
     case cancelledOrBlocked
     case noImage
+    case emptyRecording
     case processFailed(Int32, String?)
+    case recordingAlreadyInProgress
+    case noActiveRecording
 
     var errorDescription: String? {
         switch self {
@@ -17,17 +20,28 @@ enum ScreenshotError: LocalizedError {
             "Capture cancelled or blocked. If macOS asks, enable Screen Recording for Desk Agent in System Settings."
         case .noImage:
             "Capture finished, but no image was produced."
+        case .emptyRecording:
+            "Recording stopped, but no usable movie file was created."
         case .processFailed(let code, let detail):
             if let detail, !detail.isEmpty {
                 "Capture failed with exit code \(code): \(detail)"
             } else {
                 "Capture failed with exit code \(code). Check Screen Recording permission for Desk Agent."
             }
+        case .recordingAlreadyInProgress:
+            "A clip recording is already in progress."
+        case .noActiveRecording:
+            "No clip recording is active."
         }
     }
 }
 
 final class ScreenshotService {
+    private static let recordingQueue = DispatchQueue(label: "com.deskagent.markshot.recording")
+    private static var activeRecordingProcess: Process?
+    private static var activeRecordingURL: URL?
+    private static var activeRecordingCompletion: ((Result<URL, Error>) -> Void)?
+
     static func capture(mode: ScreenshotMode, completion: @escaping (Result<NSImage, Error>) -> Void) {
         if mode == .fullScreen {
             captureFullScreen(completion: completion)
@@ -100,32 +114,88 @@ final class ScreenshotService {
         let errorPipe = Pipe()
         process.standardError = errorPipe
 
+        let canStart = recordingQueue.sync { () -> Bool in
+            guard activeRecordingProcess == nil else { return false }
+            activeRecordingProcess = process
+            activeRecordingURL = url
+            activeRecordingCompletion = completion
+            return true
+        }
+
+        guard canStart else {
+            completion(.failure(ScreenshotError.recordingAlreadyInProgress))
+            return
+        }
+
         process.terminationHandler = { p in
+            let callback: ((Result<URL, Error>) -> Void)? = recordingQueue.sync {
+                let current = activeRecordingCompletion
+                activeRecordingProcess = nil
+                activeRecordingURL = nil
+                activeRecordingCompletion = nil
+                return current
+            }
+
+            if FileManager.default.fileExists(atPath: url.path),
+               let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+               let size = attributes[.size] as? NSNumber,
+               size.int64Value > 0 {
+                DispatchQueue.main.async {
+                    callback?(.success(url))
+                }
+                return
+            }
+
             if p.terminationStatus != 0 {
                 let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let errorText = String(data: errorData, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 DispatchQueue.main.async {
-                    completion(.failure(ScreenshotError.processFailed(p.terminationStatus, errorText)))
+                    callback?(.failure(ScreenshotError.processFailed(p.terminationStatus, errorText)))
                 }
                 return
             }
             guard FileManager.default.fileExists(atPath: url.path) else {
                 DispatchQueue.main.async {
-                    completion(.failure(ScreenshotError.cancelledOrBlocked))
+                    callback?(.failure(ScreenshotError.cancelledOrBlocked))
                 }
                 return
             }
             DispatchQueue.main.async {
-                completion(.success(url))
+                callback?(.failure(ScreenshotError.emptyRecording))
             }
         }
 
         do {
             try process.run()
         } catch {
+            recordingQueue.sync {
+                activeRecordingProcess = nil
+                activeRecordingURL = nil
+                activeRecordingCompletion = nil
+            }
             completion(.failure(error))
         }
+    }
+
+    static func stopClipRecording() -> Result<URL, Error> {
+        let active = recordingQueue.sync { () -> (Process?, URL?) in
+            (activeRecordingProcess, activeRecordingURL)
+        }
+
+        guard let process = active.0, let url = active.1 else {
+            return .failure(ScreenshotError.noActiveRecording)
+        }
+
+        process.interrupt()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0) {
+            recordingQueue.sync {
+                if activeRecordingProcess === process, process.isRunning {
+                    process.terminate()
+                }
+            }
+        }
+        return .success(url)
     }
 
     private static func captureFullScreen(completion: @escaping (Result<NSImage, Error>) -> Void) {
