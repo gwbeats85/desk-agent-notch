@@ -116,6 +116,15 @@ private struct CollapsedNotchStatus {
     let isActive: Bool
 }
 
+private struct NotchInlineAlert {
+    let id = UUID()
+    let symbol: String
+    let title: String
+    let detail: String
+    let tint: Color
+    let expiresAt: Date
+}
+
 private enum DeskAgentLocalPaths {
     static let homeURL = FileManager.default.homeDirectoryForCurrentUser
     static let homePath = homeURL.path
@@ -273,6 +282,7 @@ struct NotchShelfView: View {
     @State private var switchboardReachability: [String: Bool] = [:]
     @State private var isCheckingSwitchboard = false
     @State private var switchboardLastChecked: Date?
+    @State private var inlineAlert: NotchInlineAlert?
     @StateObject private var camera = NotchCameraController()
     @StateObject private var liveVoice = NotchLiveVoiceController()
     @StateObject private var wakePhrase = NotchWakePhraseController()
@@ -526,6 +536,9 @@ struct NotchShelfView: View {
         .onChange(of: state.requestedNotchModule) { _ in
             applyRequestedModuleIfNeeded()
         }
+        .onChange(of: state.statusMessage) { message in
+            showInlineAlert(for: message)
+        }
         .onChange(of: wakeListeningEnabled) { enabled in
             if enabled {
                 startWakePhraseListening()
@@ -574,6 +587,7 @@ struct NotchShelfView: View {
             ]
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
+            expireInlineAlertIfNeeded(now)
             refreshBridgeStatusIfNeeded(now: now)
 
             refreshActiveMediaSourceStateIfNeeded(now: now)
@@ -662,7 +676,7 @@ struct NotchShelfView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 7)
-        .frame(width: 118, height: 26)
+        .frame(width: 156, height: 26)
         .scaleEffect(status.isActive && activePulse ? 1.015 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: status.title)
         .animation(.easeInOut(duration: 0.55), value: activePulse)
@@ -721,6 +735,16 @@ struct NotchShelfView: View {
             )
         }
 
+        if let inlineAlert, inlineAlert.expiresAt > Date() {
+            return CollapsedNotchStatus(
+                symbol: inlineAlert.symbol,
+                title: inlineAlert.title,
+                detail: inlineAlert.detail,
+                tint: inlineAlert.tint,
+                isActive: true
+            )
+        }
+
         if totalCount > 0 {
             return CollapsedNotchStatus(
                 symbol: "tray.full.fill",
@@ -769,6 +793,67 @@ struct NotchShelfView: View {
             tint: Color.white.opacity(0.46),
             isActive: false
         )
+    }
+
+    private func showInlineAlert(for message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard trimmed != inlineAlert?.detail else { return }
+
+        let lowercased = trimmed.lowercased()
+        let isFailure = lowercased.contains("failed") ||
+            lowercased.contains("blocked") ||
+            lowercased.contains("not reachable") ||
+            lowercased.contains("offline") ||
+            lowercased.contains("unavailable") ||
+            lowercased.contains("error")
+        let isWaiting = lowercased.contains("loading") ||
+            lowercased.contains("starting") ||
+            lowercased.contains("checking") ||
+            lowercased.contains("waiting") ||
+            lowercased.contains("sync")
+
+        let title: String
+        let symbol: String
+        let tint: Color
+        let duration: TimeInterval
+        if isFailure {
+            title = "Alert"
+            symbol = "exclamationmark.triangle.fill"
+            tint = Color(red: 1.0, green: 0.62, blue: 0.28)
+            duration = 7
+        } else if isWaiting {
+            title = "Working"
+            symbol = "arrow.triangle.2.circlepath"
+            tint = Color(red: 0.62, green: 0.82, blue: 1.0)
+            duration = 5
+        } else {
+            title = "Update"
+            symbol = "checkmark.circle.fill"
+            tint = Color(red: 0.32, green: 0.9, blue: 0.62)
+            duration = 4
+        }
+
+        inlineAlert = NotchInlineAlert(
+            symbol: symbol,
+            title: title,
+            detail: Self.compactAlertDetail(trimmed),
+            tint: tint,
+            expiresAt: Date().addingTimeInterval(duration)
+        )
+    }
+
+    private func expireInlineAlertIfNeeded(_ now: Date) {
+        guard let inlineAlert, inlineAlert.expiresAt <= now else { return }
+        self.inlineAlert = nil
+    }
+
+    private static func compactAlertDetail(_ message: String) -> String {
+        let collapsed = message
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard collapsed.count > 34 else { return collapsed }
+        return String(collapsed.prefix(31)) + "..."
     }
 
     private func expandedShelf(stretch: CGFloat) -> some View {
