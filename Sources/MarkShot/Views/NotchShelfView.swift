@@ -868,28 +868,27 @@ struct NotchShelfView: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(Capsule(style: .continuous).fill(Color.black.opacity(0.28)))
-                .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
-                .shadow(color: Color.black.opacity(0.28), radius: 18, x: 0, y: 10)
-        )
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
     }
 
     private func captureDockButton(_ title: String, _ symbol: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(isActive ? Color.black.opacity(0.86) : Color.white.opacity(0.86))
-                .frame(width: 38, height: 38)
+                .foregroundStyle(isActive ? Color.black.opacity(0.9) : Color.white.opacity(0.9))
+                .frame(width: 40, height: 40)
                 .background(
                     Circle()
-                        .fill(isActive ? Color(red: 1.0, green: 0.78, blue: 0.36) : Color.white.opacity(0.12))
+                        .fill(isActive ? Color(red: 1.0, green: 0.78, blue: 0.36) : Color.black.opacity(0.58))
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .opacity(isActive ? 0.28 : 0.18)
+                        )
+                        .shadow(color: Color.black.opacity(0.36), radius: 12, x: 0, y: 8)
                 )
-                .overlay(Circle().strokeBorder(Color.white.opacity(isActive ? 0.22 : 0.08), lineWidth: 1))
+                .overlay(Circle().strokeBorder(Color.white.opacity(isActive ? 0.2 : 0.1), lineWidth: 1))
         }
         .buttonStyle(NotchPressButtonStyle())
         .help(title)
