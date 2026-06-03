@@ -773,7 +773,7 @@ struct NotchShelfView: View {
                 symbol: "iphone.gen3",
                 title: "Phone",
                 detail: "remembered",
-                tint: Color(red: 0.32, green: 0.9, blue: 0.62),
+                tint: Color.white.opacity(0.38),
                 isActive: false
             )
         }
