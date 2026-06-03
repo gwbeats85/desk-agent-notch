@@ -146,7 +146,18 @@ private enum DeskAgentLocalPaths {
     }
 
     static var servicesRegistryPath: String {
-        env("DESK_AGENT_SERVICES_YAML", fallback: "\(homePath)/.desk-agent/SERVICES.yaml")
+        if let configured = ProcessInfo.processInfo.environment["DESK_AGENT_SERVICES_YAML"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !configured.isEmpty {
+            return configured
+        }
+
+        let candidates = [
+            "\(homePath)/.desk-agent/SERVICES.yaml",
+            "\(homePath)/Workspaces/m5-notes/network/SERVICES.yaml",
+            "\(homePath)/Workspaces/codex-home/SERVICES.yaml"
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0) } ?? candidates[0]
     }
 
     static var n8nURL: String {
