@@ -259,6 +259,7 @@ struct NotchShelfView: View {
     @State private var lastChatLiveUserTranscript = ""
     @State private var lastChatLiveAssistantTranscript = ""
     @State private var isCheckingLiveReadiness = false
+    @State private var isRestartingHelper = false
     @State private var liveReadinessError = ""
     @State private var isChangingLiveSession = false
     @State private var lastBridgeRefreshAt = Date.distantPast
@@ -2193,7 +2194,21 @@ struct NotchShelfView: View {
 
             Spacer(minLength: 0)
 
-            if isCheckingLiveReadiness {
+            if isRestartingHelper {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.5)
+            } else if !liveReadinessError.isEmpty {
+                Button {
+                    restartDeskAgentHelper()
+                } label: {
+                    Image(systemName: "power.circle.fill")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(Color(red: 0.32, green: 0.9, blue: 0.62))
+                }
+                .buttonStyle(.plain)
+                .help("Restart Desk Agent helper")
+            } else if isCheckingLiveReadiness {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.5)
@@ -4479,6 +4494,23 @@ struct NotchShelfView: View {
         }
     }
 
+    private func restartDeskAgentHelper() {
+        guard !isRestartingHelper else { return }
+        isRestartingHelper = true
+        state.statusMessage = "Restarting Desk Agent helper..."
+
+        DeskAgentHelperLauncher.restart { succeeded in
+            isRestartingHelper = false
+            if succeeded {
+                state.statusMessage = "Desk Agent helper restart requested."
+                refreshLiveReadiness()
+            } else {
+                state.statusMessage = "Helper restart failed. See \(DeskAgentHelperLauncher.restartLogPath)."
+                liveReadinessError = "helper restart failed"
+            }
+        }
+    }
+
     private func refreshBridgeStatusIfNeeded(now: Date) {
         let interval: TimeInterval = expanded ? 3 : 8
         guard now.timeIntervalSince(lastBridgeRefreshAt) >= interval else { return }
@@ -6136,6 +6168,7 @@ private struct HermesSidecarView: View {
     let onToggle: () -> Void
 
     @State private var activePulse = false
+    @State private var isRestartingHelper = false
     @State private var activeSection: HermesSidecarSection = .chat
     @State private var sidecarDragOffset: CGFloat = 0
     @State private var sidecarHapticArmed = false
@@ -9263,6 +9296,9 @@ private struct HermesSidecarView: View {
             HermesSidecarActionRow(title: "System Settings", subtitle: "Main Mac settings app", symbol: "gearshape.fill", accent: Color(red: 0.9, green: 0.9, blue: 0.92)) {
                 openPath("/System/Applications/System Settings.app")
             },
+            HermesSidecarActionRow(title: "Restart Helper", subtitle: "Bring Live voice, phone bridge, and AirSend back online", symbol: "power.circle.fill", accent: Color(red: 0.32, green: 0.9, blue: 0.62)) {
+                restartDeskAgentHelper()
+            },
             HermesSidecarActionRow(title: "Calendar", subtitle: "Open Apple Calendar", symbol: "calendar", accent: Color(red: 0.74, green: 0.56, blue: 1.0)) {
                 openPath("/System/Applications/Calendar.app")
             },
@@ -9479,6 +9515,24 @@ private struct HermesSidecarView: View {
             try process.run()
         } catch {
             completion(false)
+        }
+    }
+
+    private func restartDeskAgentHelper() {
+        guard !isRestartingHelper else { return }
+        isRestartingHelper = true
+        state.statusMessage = "Restarting Desk Agent helper..."
+
+        DeskAgentHelperLauncher.restart { succeeded in
+            isRestartingHelper = false
+            if succeeded {
+                state.statusMessage = "Desk Agent helper restart requested."
+                liveReadinessError = ""
+                onRefreshStatus()
+            } else {
+                liveReadinessError = "helper restart failed"
+                state.statusMessage = "Helper restart failed. See \(DeskAgentHelperLauncher.restartLogPath)."
+            }
         }
     }
 
