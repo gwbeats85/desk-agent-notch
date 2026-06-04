@@ -252,6 +252,7 @@ struct NotchShelfView: View {
     @State private var chatPendingAttachments: [NotchChatAttachment] = []
     @State private var chatPopoutController: HermesChatPopoutController?
     @State private var hermesSidecarController: HermesSidecarWindowController?
+    @State private var liveReplyBubbleController = LiveReplyBubbleWindowController()
     @State private var liveReadiness: DeskAgentLiveReadiness?
     @State private var notchBridgeStatus: DeskAgentNotchStatus?
     @State private var seenBridgeConversationTurnIDs: Set<String> = []
@@ -574,6 +575,7 @@ struct NotchShelfView: View {
             guard !transcript.isEmpty else { return }
             MarkShotLog.write("live assistant transcript finalized for chat len=\(transcript.count)")
             appendLiveVoiceTranscript(role: .assistant, transcript: transcript)
+            liveReplyBubbleController.show(text: transcript)
             state.statusMessage = "Live reply: \(transcript)"
         }
         .onReceive(NotificationCenter.default.publisher(for: .deskAgentStartTalk)) { _ in
